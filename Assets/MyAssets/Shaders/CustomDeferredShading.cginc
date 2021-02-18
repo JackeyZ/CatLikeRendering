@@ -9,6 +9,7 @@ UNITY_DECLARE_DEPTH_TEXTURE(_CameraDepthTexture);
 sampler2D _CameraGBufferTexture0;
 sampler2D _CameraGBufferTexture1;
 sampler2D _CameraGBufferTexture2;
+sampler2D _CameraGBufferTexture4;	// 阴影遮罩
 
 float4 _LightColor, _LightDir;      // 直接光颜色及其方向
 float4 _LightPos;                   // 非方向光会有一个光源位置, rgb是坐标，w是光照距离
@@ -39,6 +40,20 @@ struct Interpolators
     float4 uv : TEXCOORD0;
     float3 ray : TEXCOORD1;
 };
+
+// 获取阴影遮罩
+float GetShadowMaskAttenuation(float2 uv)
+{
+	float attenuation = 1;
+	// 判断是否启用了阴影遮罩贴图
+	#if defined(SHADOWS_SHADOWMASK)
+		float4 mask = tex2D(_CameraGBufferTexture4, uv);					// 对gBuffer里面的阴影贴图进行采样
+		// unity_OcclusionMaskSelector包含了一个用于选择当前正在被渲染的光照通道的向量。
+		// 即如果当前渲染的灯光是第一个灯光，则unity_OcclusionMaskSelector的数值为(1, 0, 0, 0)
+		attenuation = saturate(dot(mask, unity_OcclusionMaskSelector));		
+	#endif
+	return attenuation;
+}
 
 // 直接光(viewZ是个正数，不是视口空间下的z值，视口空间下的z值是负的)
 UnityLight CreateLight(float2 uv, float3 worldPos, float viewZ){
@@ -95,21 +110,29 @@ UnityLight CreateLight(float2 uv, float3 worldPos, float viewZ){
         #endif
     #endif
 
+	#if defined(SHADOWS_SHADOWMASK)
+		shadowed = true;
+	#endif
+
     if(shadowed){
         float shadowFadeDistance = UnityComputeShadowFadeDistance(worldPos, viewZ);     // 得到片元与阴影区域中心（衰减中心）的距离
-        float shadowFade = UnityComputeShadowFade(shadowFadeDistance);                  // 根据片元到衰减中心的距离计算阴影衰减值,0~1，0表示不衰减，1表示全衰减
-        shadowAttenuation = saturate(shadowAttenuation + shadowFade);                   // 把阴影衰减应用到阴影值中
+        float shadowFade = UnityComputeShadowFade(shadowFadeDistance);                  // 根据片元到衰减中心的距离计算阴影衰减值,0~1，0表示不衰减，1表示全衰减(即没有阴影)
+        //shadowAttenuation = saturate(shadowAttenuation + shadowFade);                 // 把阴影衰减应用到阴影值中
+		shadowAttenuation = UnityMixRealtimeAndBakedShadows(shadowAttenuation, GetShadowMaskAttenuation(uv), shadowFade);  // 把阴影衰减和阴影遮罩应用到阴影值中
 
         // UNITY_FAST_COHERENT_DYNAMIC_BRANCHING 目标平台是否支持对连贯分支优化，支持的平台才使用以下的操作
         // 连贯分支：即大部分连续的片元都运行其中一个分支的代码（除了阴影区域的边缘附近，其他片元都落到阴影的内部或外部，即大部分是连贯的）
         // SHADOWS_SOFT 是否是软阴影（软阴影多次采样比较昂贵，所以下面用一个分支来优化）
         #if defined(UNITY_FAST_COHERENT_DYNAMIC_BRANCHING) && defined(SHADOWS_SOFT)
-            // 分配一个动态分支，避免编译后弄了一个假分支，导致分支两边的逻辑都运行
-            UNITY_BRANCH        
-            // 判断衰减值是否是全衰减，如果是的话表明片元距离阴影衰减中心太远了，直接把阴影采样的值设成1，这样编译后的代码就不需要对阴影贴图进行采样了，优化性能
-            if(shadowFade > 0.99){
-                shadowAttenuation = 1; 
-            }
+			// 未启用阴影遮罩才进行全衰减优化，因为如果启用了阴影遮罩，片元在超过阴影距离之后会读取阴影遮罩的值，不存在超过距离阴影衰减的情况
+			#if !defined(SHADOWS_SHADOWMASK)
+				// 分配一个动态分支，避免编译后弄了一个假分支，导致分支两边的逻辑都运行
+				UNITY_BRANCH        
+				// 判断衰减值是否是全衰减，如果是的话表明片元距离阴影衰减中心太远了，直接把阴影采样的值设成1，这样编译后的代码就不需要对阴影贴图进行采样了，优化性能
+				if(shadowFade > 0.99){
+					shadowAttenuation = 1; 
+				}
+			#endif
         #endif
     }
 

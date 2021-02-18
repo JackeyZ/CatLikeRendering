@@ -50,7 +50,8 @@ struct Interpolators
     //    float4 shadowCoordinates : TEXCOORD5;       // 阴影贴图uv坐标
     //#endif
     // 定义阴影贴图uv坐标，传入5表示放在TEXCOORD5
-    SHADOW_COORDS(5)
+    //SHADOW_COORDS(5)
+	UNITY_SHADOW_COORDS(5)
 
     // 判断是否开启了顶点光源
     #if defined(VERTEXLIGHT_ON) 
@@ -70,6 +71,11 @@ struct FragmentOutPut{
         float4 gBuffer1 : SV_TARGET1;
         float4 gBuffer2 : SV_TARGET2;
         float4 gBuffer3 : SV_TARGET3;
+		// 判断是否启用了阴影遮罩
+		// 判断平台是否支持大于4个gBuffer
+		#if defined(SHADOWS_SHADOWMASK) && (UNITY_ALLOWED_MRT_COUNT > 4)
+			float4 gBuffer4 : SV_TARGET4;
+		#endif
     #else
         float4 color : SV_Target;
     #endif
@@ -183,6 +189,22 @@ float3 GetTangentSpaceNormal(Interpolators i){
     return normal;
 }
 
+// 阴影距离渐变衰减（阴影距离的设置对应: Project Setting -> Quality -> Shadow Distance）
+float FadeShadows(Interpolators i, float attenuation) {
+
+	// UNITY_LIGHT_ATTENUATION宏里对定义里HANDLE_SHADOWS_BLENDING_IN_GI关键字的情况，对阴影没有做距离渐变衰减，这里自行计算
+	// HANDLE_SHADOWS_BLENDING_IN_GI何时定义？混合光状态下当mesh与摄像机距离小于阴影距离的时候定义。
+	#if HANDLE_SHADOWS_BLENDING_IN_GI
+		float viewZ = dot(_WorldSpaceCameraPos - i.worldPos, UNITY_MATRIX_V[2].xyz);	// 世界空间转换到视口空间，取得z值，但这个z是正值，由于只需要z值，所以用UNITY_MATRIX_V[2]足够了
+		float shadowFadeDistance = UnityComputeShadowFadeDistance(i.worldPos, viewZ);   // 得到片元与阴影区域中心（衰减中心）的距离
+		float shadowFade = UnityComputeShadowFade(shadowFadeDistance);                  // 根据片元到衰减中心的距离计算阴影衰减值,0~1，0表示阴影不衰减，1表示全衰减（没有阴影）
+		float bakedAttenuation = UnitySampleBakedOcclusion(i.lightmapUV, i.worldPos);	// 读取烘焙的阴影遮罩(烘焙需选中Light->Mixed Lighting->Lighting Mode->Shadowmask)，mesh如果在阴影距离外会自动读取
+		//attenuation = saturate(attenuation + shadowFade);								// 把阴影衰减叠加到衰减值上
+		attenuation = UnityMixRealtimeAndBakedShadows(attenuation, bakedAttenuation, shadowFade);// 把阴影衰减和阴影遮罩的值叠加到光照衰减值上
+	#endif
+	return attenuation;
+}
+
 UnityLight CreateLight(Interpolators i){
     // 光照数据结构体
     UnityLight light;
@@ -196,8 +218,9 @@ UnityLight CreateLight(Interpolators i){
         #endif
         light.dir = normalize(lightDir); 
 
-        UNITY_LIGHT_ATTENUATION(attenuation, i, i.worldPos.xyz);            // 调用unity内置的衰减方法，阴影的采样也在这里面，第二个参数就是用来算阴影的
-        attenuation *= GetOcclusion(i);
+        UNITY_LIGHT_ATTENUATION(attenuation, i, i.worldPos.xyz);        // 调用unity内置的衰减方法，阴影的采样也在这里面，第二个参数就是用来算阴影的
+		attenuation = FadeShadows(i, attenuation);
+		attenuation *= GetOcclusion(i);
         light.color = _LightColor0.rgb * attenuation;                   // 光照颜色
     #endif
 
@@ -353,6 +376,7 @@ float4 ApplyFog(float4 color, Interpolators i){
 Interpolators MyVertexProgram(appdata v)
 {
     Interpolators o;
+	UNITY_INITIALIZE_OUTPUT(Interpolators, o);										// 把结构体里的各个变量初始化为0
     o.pos = UnityObjectToClipPos(v.vertex);                                         // 裁剪坐标(名称要写死为pos，配合TRANSFER_SHADOW)
     o.worldPos.xyz = mul(unity_ObjectToWorld, v.vertex);                            // 世界坐标
     #if FOG_DEPTH 
@@ -361,7 +385,7 @@ Interpolators MyVertexProgram(appdata v)
     o.uv.xy = TRANSFORM_TEX(v.uv, _MainTex);                                        // 偏移缩放主纹理uv
     o.uv.zw = TRANSFORM_TEX(v.uv, _DetailTex);                                      // 偏移缩放细节贴图uv
     #if defined(LIGHTMAP_ON)
-        o.lightmapUV = v.uv1 * unity_LightmapST.xy + unity_LightmapST.zw;           // 偏移缩放光照贴图uv
+        o.lightmapUV = v.uv1 * unity_LightmapST.xy + unity_LightmapST.zw;           // 偏移缩放光照贴图uv（不用TRANSFORM_TEX是因为变量名会对不上，详情可看TRANSFORM_TEX源码）
     #endif
 
     o.normal = UnityObjectToWorldNormal(v.normal);                                  // 法线世界坐标
@@ -371,14 +395,15 @@ Interpolators MyVertexProgram(appdata v)
         o.tangent = float4(UnityObjectToWorldDir(v.tangent.xyz), v.tangent.w);      // 切线世界坐标
     #else
         o.tangent = UnityObjectToWorldDir(v.tangent.xyz);                           // 切线世界坐标,不用传v.tangent.w了，因为不需要在片元函数里算副法线了
-        o.binormal = CreateBinormal(o.normal, o.tangent, v.tangent.w);              // 计算副法线
+        o.binormal = CreateBinormal(o.normal, o.tangent, v.tangent.w);              // 计算副法线，tangent切线的w存储的是-1或者1，用来表明正负方向的
     #endif
 
     // 调用unity内置宏，得到shadowCoordinates
     // 原理：裁剪坐标转换成屏幕坐标
     // 顶点的ClipPos取值范围是[-w, w], 齐次除法之后变成NDC下的坐标，范围是[-1， 1],而屏幕空间下的uv取值范围是[0, 1]
     // 由于需要转换成采样阴影贴图的uv坐标，所以要转换成取值范围是[0，w]的坐标，后面片元函数里执行齐次除法得到的屏幕空间的uv坐标，取值范围[0，1]）
-    TRANSFER_SHADOW(o);
+    //TRANSFER_SHADOW(o);
+	UNITY_TRANSFER_SHADOW(o, v.uv1);
 
     // 处理四个非重要光
     ComputeVertexLightColor(o);
@@ -436,6 +461,18 @@ FragmentOutPut MyFragmentProgram(Interpolators i)
         output.gBuffer1.a = GetSmoothness(i);   // 粗糙度
         output.gBuffer2 = float4(i.normal * 0.5 + 0.5, 1); // 法线世界坐标(把-1~1的取值范围转化为0~1), rgb分别用了10位，而a通道是2位，并且a通道没有使用
         output.gBuffer3 = color;
+
+		// 判断是否启用了阴影遮罩
+		// 判断平台是否支持大于4个gBuffer
+		#if defined(SHADOWS_SHADOWMASK) && (UNITY_ALLOWED_MRT_COUNT > 4)
+			float2 shadowsMaskUV = 0;
+			// 判断是否启用了光照贴图
+			#if defined(LIGHTMAP_ON)
+				shadowsMaskUV = i.lightmapUV;
+			#endif
+			output.gBuffer4 = UnityGetRawBakedOcclusions(shadowsMaskUV, i.worldPos.xyz);		// 对阴影遮罩进行采样
+		#endif
+
     // 前向渲染
     #else
         output.color = ApplyFog(color, i);
