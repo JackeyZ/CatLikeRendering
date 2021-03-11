@@ -23,6 +23,9 @@
         [NoScaleOffset] _EmissionMap("Emission", 2D) = "black" {}   // 自发光贴图
         _Emission("Emission", Color) = (0, 0, 0)                    // 自发光颜色
 
+        [NoScaleOffset] _ParallaxMap("Parallax", 2D) = "black" {}   // 视差贴图（本质是一个高度图）
+        _ParallaxStrength("Parallax Strength", Range(0, 0.1)) = 0   // 视差强度
+
         [NoScaleOffset] _OcclusionMap("Occlusion", 2D) = "white" {} // 自阴影
         _OcclusionStrength("Occlusion Strength", Range(0, 1)) = 1   // 自阴影强度
 
@@ -39,6 +42,20 @@
         #define BINORMAL_PER_FRAGMENT       
         // 表明基于距离来计算雾浓度,如果不定义则基于深度
         //#define FOG_DISTANCE
+        // 是否对视差偏移进行限制
+        //#define PARALLAX_OFFSET_LIMITING 
+        // 视差归一的时候用的偏移值
+        //#define PARALLAX_BIAS 0
+        // 定义视差贴图里光追的步长
+        //#define PARALLAX_RAYMARCHING_STEPS 10
+        // 定义视差贴图里光追步长之间二分查找交点的次数
+        #define PARALLAX_RAYMARCHING_SEARCH_STEPS 5
+        // 定义视差贴图是否运用遮挡过渡计算
+        #define PARALLAX_RAYMARCHING_INTERPOLATE
+        // 定义计算视差偏移的方法
+        #define PARALLAX_FUNCTION ParallaxRaymarching
+        // 定义视差贴图支持动态合批
+        #define PARALLAX_SUPPORT_SCALED_DYNAMIC_BATCHING
     ENDCG
 
     SubShader
@@ -62,12 +79,19 @@
 
             // 包含SHADOWS_SCREEN、LIGHTMAP_ON、VERTEXLIGHT_ON、DIRLIGHTMAP_ON等关键字
             // SHADOWS_SCREEN：接受阴影关键字，Unity将查找启用了SHADOWS_SCREEN关键字的着色器变体
-            // LIGHTMAP_ON：是否使用光照贴图（unity会自动检索有LIGHTMAP_ON关键字的pass，传入光照贴图）
+            // LIGHTMAP_ON：是否使用静态光照贴图（unity会自动检索有LIGHTMAP_ON关键字的pass，传入静态光照贴图）
             // DIRLIGHTMAP_ON：定义光照方向贴图的关键字
             // VERTEXLIGHT_ON：定义顶点光源的关键字，unity只有点光源支持顶点光源
+            // DYNAMICLIGHTMAP_ON: 是否使用了动态间接光照贴图(对应设置Lighting -> Realtime Lighting -> Realtime Global Illumination)，用于在启用动态光的时候，间接光贴图能够根据动态光实时的位置和方向进行动态渲染。环境光也会渲染进贴图
             #pragma multi_compile_fwdbase
             // 雾效(三关键字FOG_LINEAR,FOG_EXP,FOG_EXP2)对应Lighting window - Other Setting - Fog - Mode
             #pragma multi_compile_fog
+            // LOD淡入淡出关键字（LOD Group组件里设置）
+            #pragma multi_compile _ LOD_FADE_CROSSFADE
+            // 是否启用GPU实例化（但是并不支持ForwardAdd的Pass，所以前向渲染的时候点光源并不能用GPUInstance合批）
+            #pragma multi_compile_instancing
+            // 支持lod fade 的GPU实例化(新版本不用了，默认开启)
+            //#pragma instancing_options lodfade
 
             // 不透明渲染、全透明度裁剪、淡入半透明度渲染、 半透明渲染
             #pragma shader_feature _ _RENDERING_CUTOUT _RENDERING_FADE _RENDERING_TRANSPARENT
@@ -77,6 +101,8 @@
             #pragma shader_feature _ _SMOOTHNESS_ALBEDO _SMOOTHNESS_METALLIC
             // 是否使用法线贴图
             #pragma shader_feature _NORMAL_MAP
+            // 是否使用视差贴图
+            #pragma shader_feature _PARALLAX_MAP
             // 是否使用自阴影贴图
             #pragma shader_feature _OCCLUSION_MAP
             // 是否使用自发光贴图
@@ -117,6 +143,8 @@
             #pragma multi_compile_fwdadd_fullshadows
             // 雾效
             #pragma multi_compile_fog
+            // LOD淡入淡出关键字（LOD Group组件里设置）
+            #pragma multi_compile _ LOD_FADE_CROSSFADE
             
             // 不透明渲染、全透明度裁剪、淡入半透明度渲染、 半透明渲染
             #pragma shader_feature _ _RENDERING_CUTOUT _RENDERING_FADE _RENDERING_TRANSPARENT
@@ -154,6 +182,16 @@
             // 不支持写入多个渲染目标的平台不编译该pass，nomrt即no multiple render targets
             #pragma exclude_renderers nomrt 
             
+            // 是否启用GPU实例化
+            #pragma multi_compile_instancing
+
+            // 包含UNITY_HDR_ON、LIGHTMAP_ON等关键字
+            // UNITY_HDR_ON：是否是HDR渲染（高动态光照渲染）， 对应ProjectSetting - Graphics - Tier Settings - Use HDR
+            // LIGHTMAP_ON：是否使用光照贴图
+            #pragma multi_compile_prepassfinal
+            // LOD淡入淡出关键字（LOD Group组件里设置）
+            #pragma multi_compile _ LOD_FADE_CROSSFADE
+            
             // 是否全透明度裁剪
             #pragma shader_feature _ _RENDERING_CUTOUT
             // 是否使用金属度贴图
@@ -172,11 +210,6 @@
             #pragma shader_feature _DETAIL_NORMAL_MAP
             // 是否使用细节遮罩贴图
             #pragma shader_feature _DETAIL_MASK   
-            
-            // 包含UNITY_HDR_ON、LIGHTMAP_ON等关键字
-            // UNITY_HDR_ON：是否是HDR渲染（高动态光照渲染）， 对应ProjectSetting - Graphics - Tier Settings - Use HDR
-            // LIGHTMAP_ON：是否使用光照贴图
-            #pragma multi_compile_prepassfinal
 
             #pragma vertex MyVertexProgram
             #pragma fragment MyFragmentProgram 
@@ -194,13 +227,17 @@
         {
             Tags 
             {
-                "LightMode" = "ShadowCaster" // 渲染阴影贴图的pass
+                "LightMode" = "ShadowCaster" // 渲染阴影贴图的pass(投射阴影)
             }
 
             CGPROGRAM
             #pragma target 3.0
             
             #pragma multi_compile_shadowcaster
+            // 阴影支持GPUInstance
+            #pragma multi_compile_instancing
+            // LOD淡入淡出关键字（LOD Group组件里设置）
+            #pragma multi_compile _ LOD_FADE_CROSSFADE
 
             // 渲染模式：不透明渲染、全透明度裁剪、淡入半透明度渲染、 半透明渲染
             #pragma shader_feature _ _RENDERING_CUTOUT _RENDERING_FADE _RENDERING_TRANSPARENT
@@ -219,7 +256,8 @@
         {
             Tags
             {
-                "LightMode" = "Meta"       // 烘焙静态光照贴图的时候unity会访问这个pass
+                "LightMode" = "Meta"       // 烘焙静态光照贴图或实时光照贴图的时候unity会在需要间接光数据的时候访问这个pass，从而得到Albedo和emissive提供给Enlighten系统
+                                           // 实时光照贴图是为了让静态物体的间接光能动态生成, 否则光源位置改变的时候静态物体的间接光会错误
             }
             Cull Off
             CGPROGRAM

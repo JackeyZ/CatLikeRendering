@@ -3,7 +3,14 @@
 
 #include "UnityCG.cginc"
 
-float4 _Color;				// 主纹理颜色
+// 创建属性缓冲区(在启用GPUInstance的时候，放在缓冲区的属性仅需一次SetPassCalls（修改材质渲染状态）就可以一次性设置所有对象的属性，以instance id为索引放进缓冲里)
+UNITY_INSTANCING_BUFFER_START(InstanceProperties)   
+    // 相当于float4 _Color，但不同平台有些许不同，这里用宏处理
+    UNITY_DEFINE_INSTANCED_PROP(float4, _Color)
+    // 定义颜色buffer数组，储存外部传进来的属性块，令颜色属性拥有缓冲区，本阴影pass读取的其实就是透明度
+    #define _Color_arr InstanceProperties
+UNITY_INSTANCING_BUFFER_END(InstanceProperties)
+
 sampler2D _MainTex;			// 主纹理
 float4 _MainTex_ST;			// 主纹理缩放偏移
 float _Cutoff;				// 透明度裁剪阈值
@@ -28,6 +35,7 @@ sampler3D _DitherMaskLOD;	// unity自带的抖动纹理，一共十六个模式
 #endif
 
 struct VertexData{
+    UNITY_VERTEX_INPUT_INSTANCE_ID                      // 实例ID , 是一个uint，不同平台语义会不同，具体看源码，支持GPUInstance 
 	float4 position : POSITION;
 	float3 normal : NORMAL;
 	float2 uv : TEXCOORD0;
@@ -35,6 +43,7 @@ struct VertexData{
 
 // 顶点函数用的结构体
 struct InterpolatorsVertex{
+    UNITY_VERTEX_INPUT_INSTANCE_ID              // 实例ID , 是一个uint，不同平台语义会不同，具体看源码，支持GPUInstance 
 	float4 position : SV_POSITION;
 
 	#if SHADOWS_NEED_UV
@@ -49,7 +58,9 @@ struct InterpolatorsVertex{
 
 // 片元函数用的结构体
 struct Interpolators{
-	#if SHADOWS_SEMITRANSPARENT
+    UNITY_VERTEX_INPUT_INSTANCE_ID              // 实例ID , 是一个uint，不同平台语义会不同，具体看源码，支持GPUInstance 
+	// 判断是否是半透明阴影或者LOD淡入淡出
+	#if SHADOWS_SEMITRANSPARENT || defined(LOD_FADE_CROSSFADE)
 		UNITY_VPOS_TYPE vpos : VPOS;			// VPOS:屏幕像素坐标（不是顶点着色器输出的，由GPU输出）   UNITY_VPOS_TYPE：相当于float4, DX9是float2
 	#else
 		float4 positions : SV_POSITION;			// 裁剪空间坐标，暂时没用到，在这里为了防止结构体为空，所以保留下来
@@ -66,16 +77,19 @@ struct Interpolators{
 
 // 获得透明度
 float GetAlpha(Interpolators i){
-    float alpha = _Color.a;
+    float alpha =  UNITY_ACCESS_INSTANCED_PROP(_Color_arr, _Color).a;
     // 如果粗糙度来源不是主纹理的a通道
     #if SHADOWS_NEED_UV
-        alpha = _Color.a * tex2D(_MainTex, i.uv.xy).a;
+        alpha =  UNITY_ACCESS_INSTANCED_PROP(_Color_arr, _Color).a * tex2D(_MainTex, i.uv.xy).a;
     #endif
     return alpha;
 };
 
 InterpolatorsVertex MyShadowVertexProgram(VertexData v){
 	InterpolatorsVertex i;
+	UNITY_SETUP_INSTANCE_ID(v);																// 用于配合GPUInstance,从而根据自身的instance id修改unity_ObjectToWorld这个矩阵的值，使得下面的UnityObjectToClipPos转换出正确的世界坐标，否则不同位置的多个对象阴影在同一批次渲染的时候，此时他们传进来的模型空间坐标是一样的，不改变unity_ObjectToWorld矩阵的话，最后得到的世界坐标是在同一个位置（多个对象挤在同一个地方）。
+	UNITY_TRANSFER_INSTANCE_ID(v, i);														// 把instance id从v结构体赋值到i结构体
+
 	#if defined(SHADOWS_CUBE)
 		i.position = UnityObjectToClipPos(v.position);
 		i.lightVec = mul(unity_ObjectToWorld, v.position).xyz - _LightPositionRange.xyz;	// _LightPositionRange的xyz是光源方向， w是1/Range
@@ -92,6 +106,11 @@ InterpolatorsVertex MyShadowVertexProgram(VertexData v){
 }
 
 float4 MyShadowFragmentProgram(Interpolators i): SV_TARGET {
+	// 判断是不是启用LOD淡入淡出
+	#if defined(LOD_FADE_CROSSFADE)
+		UnityApplyDitherCrossFade(i.vpos);
+	#endif
+
 	float alpha = GetAlpha(i);
 	// 如果渲染模式是全透明cutout，则裁剪掉cutout掉的片元的阴影
 	#if defined(_RENDERING_CUTOUT)
@@ -100,8 +119,8 @@ float4 MyShadowFragmentProgram(Interpolators i): SV_TARGET {
 
 	// 如果渲染模式是半透明
 	#if SHADOWS_SEMITRANSPARENT
-		float dither = tex3D(_DitherMaskLOD, float3(i.vpos.xy * 0.25, alpha * 0.9375)).a; // 第二个参数的第三个分量范围是0~1，对应抖动纹理的16个模式（0/16, 1/16, 2/16 ... 16/16）
-		clip(dither - 0.01);
+		float dither = tex3D(_DitherMaskLOD, float3(i.vpos.xy * 0.25, alpha * 0.9375)).a; // * 0.25来缩放抖动贴图，第二个参数的第三个分量范围是0~0.9375，对应抖动纹理的16个模式（0/16, 1/16, 2/16 ... 15/16）
+		clip(dither - 0.01);															  // 把接近全透明的片元丢弃
 	#endif
 
 

@@ -47,9 +47,11 @@ float GetShadowMaskAttenuation(float2 uv)
 	float attenuation = 1;
 	// 判断是否启用了阴影遮罩贴图
 	#if defined(SHADOWS_SHADOWMASK)
-		float4 mask = tex2D(_CameraGBufferTexture4, uv);					// 对gBuffer里面的阴影贴图进行采样
-		// unity_OcclusionMaskSelector包含了一个用于选择当前正在被渲染的光照通道的向量。
+		float4 mask = tex2D(_CameraGBufferTexture4, uv);					// 对gBuffer里面的阴影遮罩进行采样
+        // 四个灯光对应mask的四个通道
+		// unity_OcclusionMaskSelector用于表明当前正在被渲染的是第几个灯光。
 		// 即如果当前渲染的灯光是第一个灯光，则unity_OcclusionMaskSelector的数值为(1, 0, 0, 0)
+        // 点乘后，选择出与当前灯光对应的通道值
 		attenuation = saturate(dot(mask, unity_OcclusionMaskSelector));		
 	#endif
 	return attenuation;

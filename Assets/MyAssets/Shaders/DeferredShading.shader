@@ -1,4 +1,5 @@
-﻿Shader "Custom/DeferredShading"
+﻿// 可在Edit -- Project Settings -- Graphics -- Built-in Shader Settings -- Shader 里设置延迟渲染使用的shader
+Shader "Custom/DeferredShading"
 {
     Properties
     {

@@ -1,4 +1,4 @@
-﻿Shader "Custom1/DeferredShading" {
+﻿Shader "Custom/DeferredShading" {
 	
 	Properties {
 	}

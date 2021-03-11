@@ -8,8 +8,9 @@
 struct appdata
 {
     float4 vertex : POSITION;
-    float2 uv : TEXCOORD0;
-    float2 uv1 : TEXCOORD1;                             // 光照贴图uv（LIGHTMAP_ON关键字启用的时候有效）
+    float2 uv : TEXCOORD0;                              // 模型顶点上的uv
+    float2 uv1 : TEXCOORD1;                             // 顶点上对应静态光照贴图的uv（LIGHTMAP_ON关键字启用的时候有效）
+    float2 uv2 : TEXCOORD2;                             // 顶点上对应动态光照贴图的uv (勾选Lighting -> Realtime Lighting -> Realtime Global Illumination有效)
 };
 
 // 片元函数输入
@@ -83,9 +84,16 @@ float3 GetEmission(Interpolators i){
 Interpolators MyLightmappingVertexProgram(appdata v)
 {
     Interpolators i;
-    v.vertex.xy = v.uv1 * unity_LightmapST.xy + unity_LightmapST.zw;    // 对光照贴图uv进行缩放和偏移
-    v.vertex.z = v.vertex.z > 0 ? 0.0001 : 0;
-    i.pos = UnityObjectToClipPos(v.vertex);                             // uv转换到裁剪空间
+    //v.vertex.xy = v.uv1 * unity_LightmapST.xy + unity_LightmapST.zw;    // 对光照贴图uv进行缩放和偏移
+    //v.vertex.z = v.vertex.z > 0 ? 0.0001 : 0;
+    //i.pos = UnityObjectToClipPos(v.vertex);                             // uv转换到裁剪空间
+
+    i.pos = UnityMetaVertexPosition(v.vertex, v.uv1, v.uv2, unity_LightmapST, unity_DynamicLightmapST);
+
+    // 对uv进行缩放和偏移，便于片元函数对贴图采样
+    i.uv.xy = TRANSFORM_TEX(v.uv, _MainTex);
+    i.uv.zw = TRANSFORM_TEX(v.uv, _DetailTex);
+
     return i;
 }
 

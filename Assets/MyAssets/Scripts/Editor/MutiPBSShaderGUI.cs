@@ -110,6 +110,7 @@ public class MutiPBSShaderGUI : ShaderGUI
         DoRenderingMode();
         DoMain();
         DoSecondary();
+        DoAdvanced();
     }
 
     void DoMain()
@@ -129,6 +130,8 @@ public class MutiPBSShaderGUI : ShaderGUI
         DoSmoothness();
 
         DoNormals();
+
+        DoParallax();
 
         DoOcclusion();
 
@@ -268,6 +271,7 @@ public class MutiPBSShaderGUI : ShaderGUI
         Texture tex = map.textureValue;
         EditorGUI.BeginChangeCheck();
         editor.TexturePropertyWithHDRColor(MakeLabel(map, "Emission(RGB)"), map, FindProperty("_Emission"), false);
+        editor.LightmapEmissionProperty(2);         // 烘焙的toggle选项（选择是将静态物体的自发光烘焙到实时间接光光照贴图，还是静态光照贴图，还是不烘焙）
         if (EditorGUI.EndChangeCheck())
         {
             if(tex != map.textureValue)
@@ -282,8 +286,26 @@ public class MutiPBSShaderGUI : ShaderGUI
             // 遍历所有选中的材质球
             foreach (Material m in editor.targets)
             {
-                m.globalIlluminationFlags = MaterialGlobalIlluminationFlags.BakedEmissive;      // 让材质球的自发光参与到静态光照贴图的烘焙中
+                // 当创建一个新的材质球的时候，unity会把EmissiveIsBlack赋值给globalIlluminationFlags,表示跳过自发光
+                // （EmissiveIsBlack是当自发光颜色是黑色的时候，用于跳过自发光渲染的，由于这个标志仅在编辑器下设置，所以如果后面用代码动态修改颜色，则会出错。）
+                // 这里用的LightmapEmissionProperty是没有EmissiveIsBlack标志的，所以这里禁止设置EmissiveIsBlack标志
+                m.globalIlluminationFlags &= ~MaterialGlobalIlluminationFlags.EmissiveIsBlack;
             }
+        }
+    }
+
+    /// <summary>
+    /// 视差贴图
+    /// </summary>
+    void DoParallax()
+    {
+        MaterialProperty map = FindProperty("_ParallaxMap");
+        Texture tex = map.textureValue;
+        EditorGUI.BeginChangeCheck();
+        editor.TexturePropertySingleLine(MakeLabel(map, "Parallax(G)"), map, map.textureValue ? FindProperty("_ParallaxStrength") : null);
+        if(EditorGUI.EndChangeCheck() && tex != map.textureValue)
+        {
+            SetKeyword("_PARALLAX_MAP", map.textureValue);
         }
     }
 
@@ -338,6 +360,11 @@ public class MutiPBSShaderGUI : ShaderGUI
         }
     }
 
+    void DoAdvanced()
+    {
+        GUILayout.Label("Advanced Options", EditorStyles.boldLabel);
+        editor.EnableInstancingField();                                                    // 是否启用GPU实例化(要在shader里用了multi_compile_instancing才会显示出来，实际上对应的是INSTANCING_ON关键字)
+    }
 
     /// <summary>
     /// 查找并获得材质球属性
