@@ -182,7 +182,7 @@ float4 FragmentProgram(Interpolators i) : SV_Target
 
     UnityLight light = CreateLight(uv, worldPos, viewPos.z);                // 直接光
 
-    UnityIndirect indirectLight;                    // 间接光
+    UnityIndirect indirectLight;                                            // 间接光
     indirectLight.diffuse = 0;
     indirectLight.specular = 0;
 

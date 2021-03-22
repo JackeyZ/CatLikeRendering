@@ -96,11 +96,11 @@ struct RenderingSettings {
 
 public class MutiPBSShaderGUI : ShaderGUI
 {
-    static GUIContent staticLable = new GUIContent();
-    Material target;
-    MaterialEditor editor;
-    MaterialProperty[] properties;
-    bool shouldShowAlphaCutoff;
+    protected static GUIContent staticLable = new GUIContent();
+    protected Material target;
+    protected MaterialEditor editor;
+    protected MaterialProperty[] properties;
+    protected bool shouldShowAlphaCutoff;
     public override void OnGUI(MaterialEditor materialEditor, MaterialProperty[] properties)
     {
         //base.OnGUI(materialEditor, properties);
@@ -113,7 +113,7 @@ public class MutiPBSShaderGUI : ShaderGUI
         DoAdvanced();
     }
 
-    void DoMain()
+    protected void DoMain()
     {
         if (shouldShowAlphaCutoff)
         {
@@ -140,7 +140,7 @@ public class MutiPBSShaderGUI : ShaderGUI
         editor.TextureScaleOffsetProperty(mainTex);
     }
 
-    void DoRenderingMode()
+    protected void DoRenderingMode()
     {
         RenderingMode mode = RenderingMode.Opaque;
         shouldShowAlphaCutoff = false;
@@ -321,7 +321,7 @@ public class MutiPBSShaderGUI : ShaderGUI
         }
     }
 
-    void DoSecondary()
+    protected void DoSecondary()
     {
         GUILayout.Label("Secondary Maps", EditorStyles.boldLabel);
 
@@ -360,7 +360,7 @@ public class MutiPBSShaderGUI : ShaderGUI
         }
     }
 
-    void DoAdvanced()
+    protected void DoAdvanced()
     {
         GUILayout.Label("Advanced Options", EditorStyles.boldLabel);
         editor.EnableInstancingField();                                                    // 是否启用GPU实例化(要在shader里用了multi_compile_instancing才会显示出来，实际上对应的是INSTANCING_ON关键字)
@@ -371,7 +371,7 @@ public class MutiPBSShaderGUI : ShaderGUI
     /// </summary>
     /// <param name="name">属性名</param>
     /// <returns></returns>
-    MaterialProperty FindProperty(string name)
+    protected MaterialProperty FindProperty(string name)
     {
         return FindProperty(name, this.properties);
     }
@@ -380,7 +380,7 @@ public class MutiPBSShaderGUI : ShaderGUI
     /// 记录状态快照，支持undo
     /// </summary>
     /// <param name="label"></param>
-    void RecordAction(string label)
+    protected void RecordAction(string label)
     {
         this.editor.RegisterPropertyChangeUndo(label);
     }
@@ -390,7 +390,7 @@ public class MutiPBSShaderGUI : ShaderGUI
     /// </summary>
     /// <param name="keyword"></param>
     /// <param name="state"></param>
-    void SetKeyword(string keyword, bool state)
+    protected void SetKeyword(string keyword, bool state)
     {
         if (state)
         {
@@ -413,18 +413,18 @@ public class MutiPBSShaderGUI : ShaderGUI
     /// </summary>
     /// <param name="keyword"></param>
     /// <returns></returns>
-    bool IsKeywordEnabled(string keyword)
+    protected bool IsKeywordEnabled(string keyword)
     {
         return this.target.IsKeywordEnabled(keyword);
     }
 
     /// <summary>
-    /// 获得一个GUI容器
+    /// 获得一个文字标签
     /// </summary>
     /// <param name="text"></param>
     /// <param name="tooltip">鼠标悬停提示</param>
     /// <returns></returns>
-    static GUIContent MakeLabel(string text, string tooltip = null)
+    protected static GUIContent MakeLabel(string text, string tooltip = null)
     {
         staticLable.text = text;
         staticLable.tooltip = tooltip;
@@ -437,7 +437,7 @@ public class MutiPBSShaderGUI : ShaderGUI
     /// <param name="property"></param>
     /// <param name="tooltip">鼠标悬停提示</param>
     /// <returns></returns>
-    static GUIContent MakeLabel(MaterialProperty property, string tooltip = null)
+    protected static GUIContent MakeLabel(MaterialProperty property, string tooltip = null)
     {
         staticLable.text = property.displayName;
         staticLable.tooltip = tooltip;

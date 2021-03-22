@@ -2,36 +2,36 @@
 {
     Properties
     {
-        _Color ("Color", Color) = (1, 1, 1, 1)                      // 漫反射反射颜色 (这里命名一定要用_Color,因为生成静态光照贴图的时候unity会从游戏对象的材质球上的_Color属性中的a通道取透明度)
+        _Color ("Color", Color) = (1, 1, 1, 1)                                  // 漫反射反射颜色 (这里命名一定要用_Color,因为生成静态光照贴图的时候unity会从游戏对象的材质球上的_Color属性中的a通道取透明度)
         _MainTex ("Albedo", 2D) = "white" {}
 
-        _Cutoff("Alpha Cutoff", Range(0, 1)) = 0.5                  // 透明度裁剪阈值 (这里命名一定要用_Cutoff,因为生成静态光照贴图的时候unity会从游戏对象的材质球上的_Cutoff属性取阈值)
+        _Cutoff("Alpha Cutoff", Range(0, 1)) = 0.5                              // 透明度裁剪阈值 (这里命名一定要用_Cutoff,因为生成静态光照贴图的时候unity会从游戏对象的材质球上的_Cutoff属性取阈值)
 
-        [NoScaleOffset] _NormalMap ("Normals", 2D) = "bump" {}      // 法线贴图
+        [NoScaleOffset] _NormalMap ("Normals", 2D) = "bump" {}                  // 法线贴图
         _BumpScale("BumpScale", Range(0, 1)) = 0.5
 
-        [NoScaleOffset] _MetallicMap("Metallic", 2D) = "white" {}   // 金属度贴图
-        [Gamma]_Metallic("Metallic", Range(0, 1)) = 0               // 金属度
+        [NoScaleOffset] _MetallicMap("Metallic", 2D) = "white" {}               // 金属度贴图
+        [Gamma]_Metallic("Metallic", Range(0, 1)) = 0                           // 金属度
         
-        _Smoothness("Smoothness", Range(0, 1)) = 0.5                // 粗糙度
+        _Smoothness("Smoothness", Range(0, 1)) = 0.5                            // 粗糙度
 
         _DetailTex("Detail Albedo", 2D) = "gray" {}                             // 细节贴图 
         [NoScaleOffset] _DetailNormalMap("Detail Normals", 2D) = "bump" {}      // 细节贴图的法线贴图 
         _DetailBumpScale("Detail Bump Scale", Range(0, 1)) = 0.5                // 凹凸缩放
         [NoScaleOffset] _DetailMask("Detail Mask", 2D) = "white" {}             // 细节遮罩
 
-        [NoScaleOffset] _EmissionMap("Emission", 2D) = "black" {}   // 自发光贴图
-        _Emission("Emission", Color) = (0, 0, 0)                    // 自发光颜色
+        [NoScaleOffset] _EmissionMap("Emission", 2D) = "black" {}               // 自发光贴图
+        _Emission("Emission", Color) = (0, 0, 0)                                // 自发光颜色
 
-        [NoScaleOffset] _ParallaxMap("Parallax", 2D) = "black" {}   // 视差贴图（本质是一个高度图）
-        _ParallaxStrength("Parallax Strength", Range(0, 0.1)) = 0   // 视差强度
+        [NoScaleOffset] _ParallaxMap("Parallax", 2D) = "black" {}               // 视差贴图（本质是一个高度图）
+        _ParallaxStrength("Parallax Strength", Range(0, 0.1)) = 0               // 视差强度
 
-        [NoScaleOffset] _OcclusionMap("Occlusion", 2D) = "white" {} // 自阴影
-        _OcclusionStrength("Occlusion Strength", Range(0, 1)) = 1   // 自阴影强度
+        [NoScaleOffset] _OcclusionMap("Occlusion", 2D) = "white" {}             // 自阴影
+        _OcclusionStrength("Occlusion Strength", Range(0, 1)) = 1               // 自阴影强度
 
-        [HideInInspector] _SrcBlend("_SrcBlend", Float) = 1         // 新渲染片元颜色权重
-        [HideInInspector] _DstBlend("_DstBlend", Float) = 0         // color buffer里面的颜色权重
-        [HideInInspector] _ZWrite("_ZWrite", Float) = 1             // 是否进行深度写入
+        [HideInInspector] _SrcBlend("_SrcBlend", Float) = 1                     // 新渲染片元颜色权重
+        [HideInInspector] _DstBlend("_DstBlend", Float) = 0                     // color buffer里面的颜色权重
+        [HideInInspector] _ZWrite("_ZWrite", Float) = 1                         // 是否进行深度写入
     }
     
     CustomEditor "MutiPBSShaderGUI"

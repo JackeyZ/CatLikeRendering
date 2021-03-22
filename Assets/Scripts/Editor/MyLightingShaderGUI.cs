@@ -12,6 +12,10 @@ public class MyLightingShaderGUI : ShaderGUI {
 		Opaque, Cutout, Fade, Transparent
 	}
 
+	enum TessellationMode {
+		Uniform, Edge
+	}
+
 	struct RenderingSettings {
 		public RenderQueue queue;
 		public string renderType;
@@ -67,6 +71,12 @@ public class MyLightingShaderGUI : ShaderGUI {
 		this.editor = editor;
 		this.properties = properties;
 		DoRenderingMode();
+		if (target.HasProperty("_TessellationUniform")) {
+			DoTessellation();
+		}
+		if (target.HasProperty("_WireframeColor")) {
+			DoWireframe();
+		}
 		DoMain();
 		DoSecondary();
 		DoAdvanced();
@@ -298,6 +308,56 @@ public class MyLightingShaderGUI : ShaderGUI {
 		GUILayout.Label("Advanced Options", EditorStyles.boldLabel);
 
 		editor.EnableInstancingField();
+	}
+
+	void DoTessellation () {
+		GUILayout.Label("Tessellation", EditorStyles.boldLabel);
+		EditorGUI.indentLevel += 2;
+
+		TessellationMode mode = TessellationMode.Uniform;
+		if (IsKeywordEnabled("_TESSELLATION_EDGE")) {
+			mode = TessellationMode.Edge;
+		}
+		EditorGUI.BeginChangeCheck();
+		mode = (TessellationMode)EditorGUILayout.EnumPopup(
+			MakeLabel("Mode"), mode
+		);
+		if (EditorGUI.EndChangeCheck()) {
+			RecordAction("Tessellation Mode");
+			SetKeyword("_TESSELLATION_EDGE", mode == TessellationMode.Edge);
+		}
+
+		if (mode == TessellationMode.Uniform) {
+			editor.ShaderProperty(
+				FindProperty("_TessellationUniform"),
+				MakeLabel("Uniform")
+			);
+		}
+		else {
+			editor.ShaderProperty(
+				FindProperty("_TessellationEdgeLength"),
+				MakeLabel("Edge Length")
+			);
+		}
+		EditorGUI.indentLevel -= 2;
+	}
+
+	void DoWireframe () {
+		GUILayout.Label("Wireframe", EditorStyles.boldLabel);
+		EditorGUI.indentLevel += 2;
+		editor.ShaderProperty(
+			FindProperty("_WireframeColor"),
+			MakeLabel("Color")
+		);
+		editor.ShaderProperty(
+			FindProperty("_WireframeSmoothing"),
+			MakeLabel("Smoothing", "In screen space.")
+		);
+		editor.ShaderProperty(
+			FindProperty("_WireframeThickness"),
+			MakeLabel("Thickness", "In screen space.")
+		);
+		EditorGUI.indentLevel -= 2;
 	}
 
 	MaterialProperty FindProperty (string name) {

@@ -3,6 +3,22 @@
 
 #include "UnityCG.cginc"
 
+// 如果使用视差贴图，且启用顶点偏移
+#if defined(_PARALLAX_MAP) && defined(VERTEX_DISPLACEMENT_INSTEAD_OF_PARALLAX)
+    // 取消使用uv的视差偏移
+    #undef _PARALLAX_MAP               
+    // 启用顶点偏移
+    #define VERTEX_DISPLACEMENT 1       
+    // 给视差贴图的变量弄个新别名，在细分着色器里用
+    #define _DisplacementMap _ParallaxMap
+    // 给视差强度弄个新别名，在细分着色器里用
+    #define _DisplacementStrength _ParallaxStrength
+	// 需要采样贴图，所以这里启用需要uv的宏
+	#if !defined(SHADOWS_NEED_UV)
+		#define SHADOWS_NEED_UV 1
+	#endif
+#endif
+
 // 创建属性缓冲区(在启用GPUInstance的时候，放在缓冲区的属性仅需一次SetPassCalls（修改材质渲染状态）就可以一次性设置所有对象的属性，以instance id为索引放进缓冲里)
 UNITY_INSTANCING_BUFFER_START(InstanceProperties)   
     // 相当于float4 _Color，但不同平台有些许不同，这里用宏处理
@@ -11,11 +27,13 @@ UNITY_INSTANCING_BUFFER_START(InstanceProperties)
     #define _Color_arr InstanceProperties
 UNITY_INSTANCING_BUFFER_END(InstanceProperties)
 
+
 sampler2D _MainTex;			// 主纹理
 float4 _MainTex_ST;			// 主纹理缩放偏移
 float _Cutoff;				// 透明度裁剪阈值
 sampler3D _DitherMaskLOD;	// unity自带的抖动纹理，一共十六个模式
-
+sampler2D _ParallaxMap;
+float _ParallaxStrength;
 
 // 渲染模式为：半透明或漫反射半透明的
 #if defined(_RENDERING_FADE) || defined(_RENDERING_TRANSPARENT)
@@ -36,7 +54,7 @@ sampler3D _DitherMaskLOD;	// unity自带的抖动纹理，一共十六个模式
 
 struct VertexData{
     UNITY_VERTEX_INPUT_INSTANCE_ID                      // 实例ID , 是一个uint，不同平台语义会不同，具体看源码，支持GPUInstance 
-	float4 position : POSITION;
+	float4 vertex : POSITION;							// 与CustomLighting里的变量名保持一致，因为都会在曲面细分（CustomTessellation）里面用到
 	float3 normal : NORMAL;
 	float2 uv : TEXCOORD0;
 };
@@ -85,23 +103,33 @@ float GetAlpha(Interpolators i){
     return alpha;
 };
 
+// 定义一个别名，让CustomTessellation调用
+#define MyVertexProgram MyShadowVertexProgram
+ 
 InterpolatorsVertex MyShadowVertexProgram(VertexData v){
 	InterpolatorsVertex i;
 	UNITY_SETUP_INSTANCE_ID(v);																// 用于配合GPUInstance,从而根据自身的instance id修改unity_ObjectToWorld这个矩阵的值，使得下面的UnityObjectToClipPos转换出正确的世界坐标，否则不同位置的多个对象阴影在同一批次渲染的时候，此时他们传进来的模型空间坐标是一样的，不改变unity_ObjectToWorld矩阵的话，最后得到的世界坐标是在同一个位置（多个对象挤在同一个地方）。
 	UNITY_TRANSFER_INSTANCE_ID(v, i);														// 把instance id从v结构体赋值到i结构体
 
-	#if defined(SHADOWS_CUBE)
-		i.position = UnityObjectToClipPos(v.position);
-		i.lightVec = mul(unity_ObjectToWorld, v.position).xyz - _LightPositionRange.xyz;	// _LightPositionRange的xyz是光源方向， w是1/Range
-	#else
-		i.position = UnityClipSpaceShadowCasterPos(v.position, v.normal);					// 转换到裁剪坐标，并且执行顶点法向偏差
-		i.position = UnityApplyLinearShadowBias(i.position);								// 偏移裁剪坐标的z值并返回顶点裁剪坐标点
-	#endif
-
 	#if SHADOWS_NEED_UV 
 		i.uv = TRANSFORM_TEX(v.uv, _MainTex);
 	#endif
 
+	// 检查是否需要根据视差贴图偏移顶点
+	#if VERTEX_DISPLACEMENT
+		float displacement = tex2Dlod(_DisplacementMap, float4(i.uv.xy, 0, 0)).g;
+		displacement = (displacement - 0.5) * _DisplacementStrength;						// 0~1转换成-0.5到0.5，之后乘以偏移强度
+		v.normal = normalize(v.normal);
+		v.vertex.xyz += v.normal * displacement;
+	#endif
+
+	#if defined(SHADOWS_CUBE)
+		i.position = UnityObjectToClipPos(v.vertex);
+		i.lightVec = mul(unity_ObjectToWorld, v.vertex).xyz - _LightPositionRange.xyz;		// _LightPositionRange的xyz是光源方向， w是1/Range
+	#else
+		i.position = UnityClipSpaceShadowCasterPos(v.vertex, v.normal);						// 转换到裁剪坐标，并且执行顶点法向偏差
+		i.position = UnityApplyLinearShadowBias(i.position);								// 偏移裁剪坐标的z值并返回顶点裁剪坐标点
+	#endif
 	return i;
 }
 
