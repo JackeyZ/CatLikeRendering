@@ -1,10 +1,10 @@
 fileFormatVersion: 2
-guid: c0f6dfdb152f968478427be9af80ee90
+guid: c4e85bd9219b6d34585c0ff9f948c47d
 MonoImporter:
   externalObjects: {}
   serializedVersion: 2
   defaultReferences:
-  - deferredFog: {fileID: 4800000, guid: b53adf27d41b3284c81c93924fa21ad1, type: 3}
+  - bloomShader: {fileID: 4800000, guid: f54a0d618bd47ff4d9f6e9e910999bcf, type: 3}
   executionOrder: 0
   icon: {instanceID: 0}
   userData: 

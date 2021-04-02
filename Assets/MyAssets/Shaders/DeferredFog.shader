@@ -1,5 +1,5 @@
 ﻿// 延迟渲染模式下的雾效后处理
-Shader "Custom/DeferredFog"         
+Shader "Hidden/DeferredFog"         
 {
     Properties
     {

@@ -1,10 +1,10 @@
 fileFormatVersion: 2
-guid: c0f6dfdb152f968478427be9af80ee90
+guid: bd0a789a70dab8d49a05c21d1bce85e1
 MonoImporter:
   externalObjects: {}
   serializedVersion: 2
   defaultReferences:
-  - deferredFog: {fileID: 4800000, guid: b53adf27d41b3284c81c93924fa21ad1, type: 3}
+  - fxaaShader: {fileID: 4800000, guid: 17834a354fecf3748a5b6c8ec48947e7, type: 3}
   executionOrder: 0
   icon: {instanceID: 0}
   userData: 
