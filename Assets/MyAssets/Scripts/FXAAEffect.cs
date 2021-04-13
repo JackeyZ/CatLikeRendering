@@ -18,12 +18,21 @@ public class FXAAEffect : MonoBehaviour
 
     [Tooltip("对比度阈值，对比度超过该值的像素才会进行抗锯齿处理")]
     [Range(0.0312f, 0.0833f)]
-    public float contrastThreshold = 0.0312f;
+    public float contrastThreshold = 0.0833f;
 
     [Tooltip("相对对比度阈值，像素附近亮度较高的时候，需要更高的对比度才进行抗锯齿处理")]
     [Range(0.063f, 0.333f)]
-    public float relativeThreshold = 0.063f;
+    public float relativeThreshold = 0.166f;
 
+    [Tooltip("强度")]
+    [Range(0f, 1f)]
+    public float subpixelBlending = 0.75f;
+
+    [Tooltip("是否用低品质效果")]
+    public bool lowQuality = false;
+
+    [Tooltip("是否在gamma空间中混合，若本身项目就是Gamma空间下的，则该变量无效")]
+    public bool gammaBlending;
     public enum LuminanceMode { 
         /// <summary>
         /// 通过a通道来获取亮度
@@ -60,12 +69,31 @@ public class FXAAEffect : MonoBehaviour
 
         fxaaMaterial.SetFloat("_ContrastThreshold", contrastThreshold);
         fxaaMaterial.SetFloat("_RelativeThreshold", relativeThreshold);
+        fxaaMaterial.SetFloat("_SubpixelBlending", subpixelBlending);
+
+        if (lowQuality)
+        {
+            fxaaMaterial.EnableKeyword("LOW_QUALITY");
+        }
+        else
+        {
+            fxaaMaterial.DisableKeyword("LOW_QUALITY");
+        }
+
+        if (gammaBlending)
+        {
+            fxaaMaterial.EnableKeyword("GAMMA_BLENDING");
+        }
+        else
+        {
+            fxaaMaterial.DisableKeyword("GAMMA_BLENDING");
+        }
 
         if (luminanceSource == LuminanceMode.Calculate)
         {
             fxaaMaterial.DisableKeyword("LUMINANCE_GREEN");
-            RenderTexture luminanceTex = RenderTexture.GetTemporary(source.width, source.height, 0, source.format);
-            Graphics.Blit(source, luminanceTex, fxaaMaterial, luminancePass);           // 渲染出带亮度的贴图
+            RenderTexture luminanceTex = RenderTexture.GetTemporary(source.width, source.height, 0, source.format);     // 用于储存带亮度贴图
+            Graphics.Blit(source, luminanceTex, fxaaMaterial, luminancePass);                                           // 渲染出带亮度的贴图
             Graphics.Blit(luminanceTex, destination, fxaaMaterial, fxaaPass);
             RenderTexture.ReleaseTemporary(luminanceTex);
         }
