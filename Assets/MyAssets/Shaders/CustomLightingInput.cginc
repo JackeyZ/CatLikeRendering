@@ -1,9 +1,11 @@
-// 
-// 本脚本存放CustomLighting里用到的所有结构体、变量和Get函数
+// 光照信息输入脚本
+// 本脚本存放CustomLighting、CustomLightmapping等脚本里用到的所有光照输入结构体、变量和Get函数
 //
 #if !defined(CUSTOM_LIGHTING_INPUT_INLCUDE)
 #define CUSTOM_LIGHTING_INPUT_INLCUDE
 
+
+/*********可重载函数*********/
 // 如果获取反射率的方法没有被其他地方定义，则定义GetAlbedo作为获取反射率的方法（方便其他地方重写该方法）
 #if !defined(ALBEDO_FUNCTION)
     #define ALBEDO_FUNCTION GetAlbedo
@@ -13,12 +15,17 @@
 #if !defined(UV_FUNCTION)
     #define UV_FUNCTION GetDefaultUV
 #endif
+/********可重载函数end*******/
 
+
+/**********include***********/
 // UnityPBSLighting需要放到AutoLight之前
 #include "UnityPBSLighting.cginc"           
 #include "AutoLight.cginc"
 // 表面属性
 #include "CustomSurface.cginc"
+/**********include***********/
+
 
 #if defined(FOG_LINEAR) || defined(FOG_EXP) || defined(FOG_EXP2)
     #if !defined(FOG_DISTANCE)

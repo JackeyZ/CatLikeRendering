@@ -163,6 +163,11 @@ Shader "Custom/TriplanarMapping"
             #pragma vertex MyLightmappingVertexProgram 
             #pragma fragment MyLightmappingFragmentProgram 
             
+            // 表示需要用到世界空间的法线
+            #define META_PASS_NEEDS_NORMALS
+            // 表示需要用到世界坐标
+            #define META_PASS_NEEDS_POSITION
+
             #include "CustomTriplanarMapping.cginc"
             #include "CustomLightmapping.cginc"
 

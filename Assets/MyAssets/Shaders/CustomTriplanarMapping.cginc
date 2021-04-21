@@ -9,15 +9,14 @@
 
 #include "CustomLightingInput.cginc"
 
-struct TriplanarUV{
-	float2 x, y, z;
-};
-
 sampler2D _MOHSMap;
 sampler2D _TopMainTex, _TopMOHSMap, _TopNormalMap;
 float _MapScale;
 float _BlendOffset, _BlendExponent, _BlendHeightStrength;
 
+struct TriplanarUV{
+	float2 x, y, z;
+};
 TriplanarUV GetTriplanarUV(SurfaceParameters parameters){
 	TriplanarUV triUV;
 	float3 p = parameters.position * _MapScale;	// 片元世界坐标 * 缩放
@@ -116,7 +115,7 @@ void MyTriPlanarSurfaceFunction(inout SurfaceData surface, SurfaceParameters par
 
 
 	float3 triW = GetTriplanarWeights(parameters, mohsX.b, mohsY.b, mohsZ.b);							// 得到当前片元的朝向权重
-	surface.albedo = (albedoX * triW.x + albedoY * triW.y + albedoZ * triW.z) / 3;						// 根据权重计算反射率
+	surface.albedo = albedoX * triW.x + albedoY * triW.y + albedoZ * triW.z;							// 根据权重计算反射率
 
 	float4 mohs = mohsX * triW.x + mohsY * triW.y + mohsZ * triW.z;
 	surface.metallic = mohs.r;																			// 金属度
