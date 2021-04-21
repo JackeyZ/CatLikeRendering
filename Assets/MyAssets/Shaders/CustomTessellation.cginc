@@ -137,8 +137,8 @@
 	// barycentricCoordinates是重心坐标(三个分量分别是本次处理的顶点对应patch三角面三个顶点的权重，且三个分量相加等于1。哪个分量权重越大，表示本次处理的顶点越靠近它)
 	[UNITY_domain("tri")]
 	InterpolatorsVertex MyDomainProgram(TessellationFactors factors, OutputPatch<TessellationControlPoint, 3> patch, float3 barycentricCoordinates : SV_DomainLocation){
-		TessellationControlPoint data;
-
+		VertexData data;
+		//TessellationControlPoint data;
 		// 定义一个计算新顶点插值信息的宏，例：用原生三角面的顶点坐标分别乘以重心坐标的三个分量即可得出新建顶点的坐标，uv等计算方式一样
 		#define MY_DOMAIN_PROGRAM_INTERPOLATE(fieldName) data.fieldName = \
 		patch[0].fieldName * barycentricCoordinates.x \

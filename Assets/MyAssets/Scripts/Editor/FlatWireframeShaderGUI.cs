@@ -7,12 +7,8 @@ using UnityEngine.Rendering;
 
 public class FlatWireframeShaderGUI : MutiPBSShaderGUI
 {
-    public override void OnGUI(MaterialEditor materialEditor, MaterialProperty[] properties)
+    protected override void ThisOnGUI(MaterialEditor materialEditor, MaterialProperty[] properties)
     {
-        //base.OnGUI(materialEditor, properties);
-        this.target = materialEditor.target as Material;
-        this.editor = materialEditor;
-        this.properties = properties;
         DoRenderingMode();
         DoWirefram();
         DoMain();

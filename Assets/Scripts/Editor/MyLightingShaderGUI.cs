@@ -2,7 +2,7 @@
 using UnityEngine.Rendering;
 using UnityEditor;
 
-public class MyLightingShaderGUI : ShaderGUI {
+public class MyLightingShaderGUI : MyBaseShaderGUI {
 
 	enum SmoothnessSource {
 		Uniform, Albedo, Metallic
@@ -54,22 +54,15 @@ public class MyLightingShaderGUI : ShaderGUI {
 		};
 	}
 
-	static GUIContent staticLabel = new GUIContent();
-
 	static ColorPickerHDRConfig emissionConfig =
 		new ColorPickerHDRConfig(0f, 99f, 1f / 99f, 3f);
 
-	Material target;
-	MaterialEditor editor;
-	MaterialProperty[] properties;
 	bool shouldShowAlphaCutoff;
 
 	public override void OnGUI (
 		MaterialEditor editor, MaterialProperty[] properties
 	) {
-		this.target = editor.target as Material;
-		this.editor = editor;
-		this.properties = properties;
+		base.OnGUI(editor, properties);
 		DoRenderingMode();
 		if (target.HasProperty("_TessellationUniform")) {
 			DoTessellation();
@@ -358,44 +351,5 @@ public class MyLightingShaderGUI : ShaderGUI {
 			MakeLabel("Thickness", "In screen space.")
 		);
 		EditorGUI.indentLevel -= 2;
-	}
-
-	MaterialProperty FindProperty (string name) {
-		return FindProperty(name, properties);
-	}
-
-	static GUIContent MakeLabel (string text, string tooltip = null) {
-		staticLabel.text = text;
-		staticLabel.tooltip = tooltip;
-		return staticLabel;
-	}
-
-	static GUIContent MakeLabel (
-		MaterialProperty property, string tooltip = null
-	) {
-		staticLabel.text = property.displayName;
-		staticLabel.tooltip = tooltip;
-		return staticLabel;
-	}
-
-	void SetKeyword (string keyword, bool state) {
-		if (state) {
-			foreach (Material m in editor.targets) {
-				m.EnableKeyword(keyword);
-			}
-		}
-		else {
-			foreach (Material m in editor.targets) {
-				m.DisableKeyword(keyword);
-			}
-		}
-	}
-
-	bool IsKeywordEnabled (string keyword) {
-		return target.IsKeywordEnabled(keyword);
-	}
-
-	void RecordAction (string label) {
-		editor.RegisterPropertyChangeUndo(label);
 	}
 }

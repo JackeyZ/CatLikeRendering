@@ -9,9 +9,16 @@
     #define ALBEDO_FUNCTION GetAlbedo
 #endif
 
+// 如果获取uv的方法没有被其他地方定义，则定义默认的获取uv的方法（方便其他地方重写）
+#if !defined(UV_FUNCTION)
+    #define UV_FUNCTION GetDefaultUV
+#endif
+
 // UnityPBSLighting需要放到AutoLight之前
 #include "UnityPBSLighting.cginc"           
 #include "AutoLight.cginc"
+// 表面属性
+#include "CustomSurface.cginc"
 
 #if defined(FOG_LINEAR) || defined(FOG_EXP) || defined(FOG_EXP2)
     #if !defined(FOG_DISTANCE)
@@ -20,8 +27,13 @@
     #define FOG_ON 1
 #endif
  
-// 表明VertexData里有切线、uv1、uv2，在细分着色器中的需要用到
-#define TESSELLATION_TANGENT 1
+#if defined(_NORMAL_MAP) || defined(_DETAIL_NORMAL_MAP) || defined(_PARALLAX_MAP)
+    // 表明需要用到切线空间下的切线、副法线、法线
+    #define REQUIRES_TANGENT_SPACE 1
+    // 表明VertexData里面有切线
+    #define TESSELLATION_TANGENT 1
+#endif
+// 表明VertexData里有uv1、uv2，在细分着色器中的需要用到
 #define TESSELLATION_UV1 1
 #define TESSELLATION_UV2 1
 
@@ -61,16 +73,22 @@ struct VertexData
 struct InterpolatorsVertex
 {
     UNITY_VERTEX_INPUT_INSTANCE_ID                      // 实例ID , 是一个uint，不同平台语义会不同，具体看源码，支持GPUInstance 
-    float4 uv : TEXCOORD0;
+    // 判断是否有有效uv（代码生成的网格可能没有正确uv）
+    #if !defined(NO_DEFAULT_UV)
+        float4 uv : TEXCOORD0;
+    #endif
     float3 normal : TEXCOORD1;                          // 世界空间法线
 
-    // 判断是否用片元函数计算副法线
-    #if defined(BINORMAL_PER_FRAGMENT)
-        float4 tangent : TEXCOORD2;
-    // 如果不用片元函数计算，则在顶点函数算好副法线插值传过来
-    #else
-        float3 tangent : TEXCOORD2;
-        float3 binormal : TEXCOORD3;
+    // 判断是否需要切线空间
+    #if REQUIRES_TANGENT_SPACE
+        // 判断是否用片元函数计算副法线
+        #if defined(BINORMAL_PER_FRAGMENT)
+            float4 tangent : TEXCOORD2;
+        // 如果不用片元函数计算，则在顶点函数算好副法线插值传过来
+        #else
+            float3 tangent : TEXCOORD2;
+            float3 binormal : TEXCOORD3;
+        #endif
     #endif
 
     // 如果定义了深度雾
@@ -88,7 +106,7 @@ struct InterpolatorsVertex
     // 定义阴影贴图uv坐标，传入5表示放在TEXCOORD5
     //SHADOW_COORDS(5)
     // 定义阴影贴图uv坐标，传入5表示放在TEXCOORD5
-	UNITY_SHADOW_COORDS(5)
+	UNITY_SHADOW_COORDS(5) 
 
     // 判断是否开启了顶点光源
     #if defined(VERTEXLIGHT_ON) 
@@ -114,16 +132,22 @@ struct InterpolatorsVertex
 struct Interpolators
 {
     UNITY_VERTEX_INPUT_INSTANCE_ID                      // 实例ID , 是一个uint，不同平台语义会不同，具体看源码，支持GPUInstance 
-    float4 uv : TEXCOORD0;
+    // 判断是否有有效uv（代码生成的网格可能没有正确uv）
+    #if !defined(NO_DEFAULT_UV)
+        float4 uv : TEXCOORD0;
+    #endif
     float3 normal : TEXCOORD1;                          // 世界空间法线
-
-    // 判断是否用片元函数计算副法线
-    #if defined(BINORMAL_PER_FRAGMENT)
-        float4 tangent : TEXCOORD2;
-    // 如果不用片元函数计算，则在顶点函数算好副法线插值传过来
-    #else
-        float3 tangent : TEXCOORD2;
-        float3 binormal : TEXCOORD3;
+    
+    // 判断是否需要切线空间
+    #if REQUIRES_TANGENT_SPACE
+        // 判断是否用片元函数计算副法线
+        #if defined(BINORMAL_PER_FRAGMENT)
+            float4 tangent : TEXCOORD2;
+        // 如果不用片元函数计算，则在顶点函数算好副法线插值传过来
+        #else
+            float3 tangent : TEXCOORD2;
+            float3 binormal : TEXCOORD3;
+        #endif
     #endif
 
     // 如果定义了深度雾
@@ -220,10 +244,20 @@ sampler2D _EmissionMap;                         // 自发光贴图
 float3 _Emission;                               // 自发光颜色
 
 
+// 获取默认的uv
+float4 GetDefaultUV(Interpolators i){
+    // 判断是否有有效的uv（代码生成的mesh有可能uv是无效的）
+    #if defined(NO_DEFAULT_UV) 
+        return float4(0, 0, 0, 0);
+    #else
+        return i.uv;
+    #endif
+}
+
 // 对金属度贴图进行采样，获得金属度（r通道）
 float GetMetallic(Interpolators i){
     #if defined(_METALLIC_MAP)
-        return tex2D(_MetallicMap, i.uv.xy).r * _Metallic;
+        return tex2D(_MetallicMap, UV_FUNCTION(i).xy).r * _Metallic;
     #else
         return _Metallic;
     #endif
@@ -233,9 +267,9 @@ float GetMetallic(Interpolators i){
 float GetSmoothness(Interpolators i){
     float smoothness = 1;
     #if defined(_SMOOTHNESS_ALBEDO)
-        smoothness = tex2D(_MainTex, i.uv.xy).a;
+        smoothness = tex2D(_MainTex, UV_FUNCTION(i).xy).a;
     #elif defined(_SMOOTHNESS_METALLIC) && defined(_METALLIC_MAP)
-        smoothness = tex2D(_MetallicMap, i.uv.xy).a;
+        smoothness = tex2D(_MetallicMap, UV_FUNCTION(i).xy).a;
     #endif
     return smoothness * _Smoothness;
 }
@@ -243,7 +277,7 @@ float GetSmoothness(Interpolators i){
 // 获得自阴影
 float GetOcclusion(Interpolators i){
     #if defined(_OCCLUSION_MAP)
-        return lerp(1, tex2D(_OcclusionMap, i.uv.xy).g, _OcclusionStrength);  // 自阴影强度是0的时候返回1，表示不影响正常光照，当前强度是1的时候则返回自阴影贴图的数值
+        return lerp(1, tex2D(_OcclusionMap, UV_FUNCTION(i).xy).g, _OcclusionStrength);  // 自阴影强度是0的时候返回1，表示不影响正常光照，当前强度是1的时候则返回自阴影贴图的数值
     #else
         return 1;
     #endif
@@ -254,7 +288,7 @@ float3 GetEmission(Interpolators i){
     // 前向渲染的基础pass和延迟渲染的pass使用
     #if defined(FORWARD_BASE_PASS) || defined(DEFERRED_PASS)
         #if defined(_EMISSION_MAP)
-            return tex2D(_EmissionMap, i.uv.xy) * _Emission;
+            return tex2D(_EmissionMap, UV_FUNCTION(i).xy) * _Emission;
         #else
             return _Emission;
         #endif
@@ -266,7 +300,7 @@ float3 GetEmission(Interpolators i){
 // 获得细节贴图遮罩
 float GetDetailMask(Interpolators i){
     #if defined(_DETAIL_MASK)
-        return tex2D(_DetailMask, i.uv.xy).a;
+        return tex2D(_DetailMask, UV_FUNCTION(i).xy).a;
     #else
         return 1;
     #endif
@@ -274,9 +308,9 @@ float GetDetailMask(Interpolators i){
 
 // 获得漫反射固有色
 float3 GetAlbedo(Interpolators i){
-    float3 albedo = tex2D(_MainTex, i.uv.xy).rgb * UNITY_ACCESS_INSTANCED_PROP(_Color_arr, _Color).rgb;
+    float3 albedo = tex2D(_MainTex, UV_FUNCTION(i).xy).rgb * UNITY_ACCESS_INSTANCED_PROP(_Color_arr, _Color).rgb;
     #if defined(_DETAIL_ALBEDO_MAP)
-        float3 details = tex2D(_DetailTex, i.uv.zw) * unity_ColorSpaceDouble;
+        float3 details = tex2D(_DetailTex, UV_FUNCTION(i).zw) * unity_ColorSpaceDouble;
         albedo = lerp(albedo, albedo * details, GetDetailMask(i));
     #endif
     return albedo;
@@ -287,7 +321,7 @@ float GetAlpha(Interpolators i){
     float alpha = UNITY_ACCESS_INSTANCED_PROP(_Color_arr, _Color).a;
     // 如果粗糙度来源不是主纹理的a通道
     #if !defined(_SMOOTHNESS_ALBEDO)
-        alpha = UNITY_ACCESS_INSTANCED_PROP(_Color_arr, _Color).a * tex2D(_MainTex, i.uv.xy).a;
+        alpha = UNITY_ACCESS_INSTANCED_PROP(_Color_arr, _Color).a * tex2D(_MainTex, UV_FUNCTION(i).xy).a;
     #endif
     return alpha;
 }
@@ -297,11 +331,11 @@ float3 GetTangentSpaceNormal(Interpolators i){
     float3 normal = float3(0, 0, 1);
 
     #if defined(_NORMAL_MAP)
-        normal = UnpackScaleNormal(tex2D(_NormalMap, i.uv.xy), _BumpScale);                              // 主法线贴图，根据平台自动对方法线贴图使用正确的解码，并缩放法线
+        normal = UnpackScaleNormal(tex2D(_NormalMap, UV_FUNCTION(i).xy), _BumpScale);                               // 主法线贴图，根据平台自动对方法线贴图使用正确的解码，并缩放法线
     #endif
     
     #if defined(_DETAIL_NORMAL_MAP)
-        float3 detailNormal = UnpackScaleNormal(tex2D(_DetailNormalMap, i.uv.zw), _DetailBumpScale);                // 细节法线贴图， 根据平台自动对方法线贴图使用正确的解码，并缩放法线
+        float3 detailNormal = UnpackScaleNormal(tex2D(_DetailNormalMap, UV_FUNCTION(i).zw), _DetailBumpScale);      // 细节法线贴图， 根据平台自动对方法线贴图使用正确的解码，并缩放法线
         detailNormal = lerp(float3(0, 0, 1), detailNormal, GetDetailMask(i));                                       // 配合细节贴图遮罩
         normal = BlendNormals(normal, detailNormal);                                                                // 融合法线
     #endif

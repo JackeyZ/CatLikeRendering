@@ -7,7 +7,7 @@
 // 顶点函数输入
 struct appdata
 {
-    float4 vertex : POSITION;
+    float4 vertex : POSITION;                           // 顶点的光照贴图纹理映射坐标
     float2 uv : TEXCOORD0;                              // 模型顶点上的uv
     float2 uv1 : TEXCOORD1;                             // 顶点上对应静态光照贴图的uv（LIGHTMAP_ON关键字启用的时候有效）
     float2 uv2 : TEXCOORD2;                             // 顶点上对应动态光照贴图的uv (勾选Lighting -> Realtime Lighting -> Realtime Global Illumination有效)
@@ -88,6 +88,7 @@ Interpolators MyLightmappingVertexProgram(appdata v)
     //v.vertex.z = v.vertex.z > 0 ? 0.0001 : 0;
     //i.pos = UnityObjectToClipPos(v.vertex);                             // uv转换到裁剪空间
 
+    // 根据顶点的光照贴图纹理映射坐标，求得顶点在模型空间中的x、y值，然后变换到裁剪空间中并返回
     i.pos = UnityMetaVertexPosition(v.vertex, v.uv1, v.uv2, unity_LightmapST, unity_DynamicLightmapST);
 
     // 对uv进行缩放和偏移，便于片元函数对贴图采样

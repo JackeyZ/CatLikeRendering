@@ -12,12 +12,8 @@ enum TessellationMode
 
 public class TessellationShaderGUI : MutiPBSShaderGUI
 {
-    public override void OnGUI(MaterialEditor materialEditor, MaterialProperty[] properties)
+    protected override void ThisOnGUI(MaterialEditor materialEditor, MaterialProperty[] properties)
     {
-        //base.OnGUI(materialEditor, properties);
-        this.target = materialEditor.target as Material;
-        this.editor = materialEditor;
-        this.properties = properties;
         DoRenderingMode();
         if (target.HasProperty("_TessellationUniform"))
         {
@@ -26,6 +22,7 @@ public class TessellationShaderGUI : MutiPBSShaderGUI
         DoMain();
         DoSecondary();
         DoAdvanced();
+
     }
 
     /// <summary>

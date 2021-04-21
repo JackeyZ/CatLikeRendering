@@ -101,7 +101,7 @@ void ApplySubtractiveLighting(Interpolators i, inout UnityIndirect indirectLight
 }
 
 // 创建间接光
-UnityIndirect CreateIndirectLight(Interpolators i, float3 viewDir){
+UnityIndirect CreateIndirectLight(Interpolators i, float3 viewDir, SurfaceData surface){
     // 间接光数据结构体
     UnityIndirect indirectLight;
     indirectLight.diffuse = 0; 
@@ -170,7 +170,7 @@ UnityIndirect CreateIndirectLight(Interpolators i, float3 viewDir){
         float3 reflectionDir = reflect(-viewDir, i.normal);
 
         Unity_GlossyEnvironmentData envData;
-        envData.roughness = 1 - GetSmoothness(i);
+        envData.roughness = 1 - surface.smoothness;
 
         // unity_SpecCube0_ProbePosition是unity_SpecCube0对应的反射探头坐标, unity_SpecCube0_BoxMin则是探头包围盒的最小端点，unity_SpecCube0_BoxMax是最大端点
         // 可以用unity自带的BoxProjectedCubemapDirection代替
@@ -197,7 +197,7 @@ UnityIndirect CreateIndirectLight(Interpolators i, float3 viewDir){
         #endif
 
         // 自阴影
-        float occlusion = GetOcclusion(i);
+        float occlusion = surface.occlusion;
         indirectLight.diffuse *= occlusion;
         indirectLight.specular *= occlusion;
 
@@ -213,21 +213,30 @@ UnityIndirect CreateIndirectLight(Interpolators i, float3 viewDir){
 
 // 初始化片元函数的法线
 void InitializeFragmentNormal(inout Interpolators i){
-    //float3 dpdx = ddx(i.worldPos);                                                                              // 计算自身片元与x方向上相邻的片元世界坐标的差值
-    //float3 dpdy = ddy(i.worldPos);                                                                              // 计算自身片元与y方向上相邻的片元世界坐标的差值
-    //i.normal = normalize(cross(dpdy, dpdx));                                                                    // 叉乘算出三角面的法线，不用原本顶点的法线了,让模型变得有棱有角
-    float3 tangentSpaceNormal = GetTangentSpaceNormal(i);
+    // 判断是否需要切线空间
+    #if REQUIRES_TANGENT_SPACE
+        //float3 dpdx = ddx(i.worldPos);                                                                              // 计算自身片元与x方向上相邻的片元世界坐标的差值
+        //float3 dpdy = ddy(i.worldPos);                                                                              // 计算自身片元与y方向上相邻的片元世界坐标的差值
+        //i.normal = normalize(cross(dpdy, dpdx));                                                                    // 叉乘算出三角面的法线，不用原本顶点的法线了,让模型变得有棱有角
+    
+        // 计算切线空间下的法线（需要融合细节贴图的法线）
+        float3 tangentSpaceNormal = GetTangentSpaceNormal(i);
 
-    // 是否定义了需要在片元函数里计算副法线
-    #if defined(BINORMAL_PER_FRAGMENT)
-        float3 binormal = CreateBinormal(i.normal, i.tangent.xyz, i.tangent.w);                                 // 叉乘计算副法线，切线的w存储的是-1或者1，用来表明正负方向的
+        // 是否定义了需要在片元函数里计算副法线
+        #if defined(BINORMAL_PER_FRAGMENT)
+            float3 binormal = CreateBinormal(i.normal, i.tangent.xyz, i.tangent.w);                                 // 叉乘计算副法线，切线的w存储的是-1或者1，用来表明正负方向的
+        #else
+            float3 binormal = i.binormal;
+        #endif
+
+        // 切线空间的法线转换到世界空间
+        // i.tangent、binormal、i.normal是世界空间的向量，并且是切线空间坐标的基底
+        i.normal = normalize(tangentSpaceNormal.x * i.tangent +                                                     // 切线方向偏移x
+                             tangentSpaceNormal.y * binormal +                                                      // 副法线方向偏移y
+                             tangentSpaceNormal.z * i.normal);                                                      // 法线方向偏移z
     #else
-        float3 binormal = i.binormal;
+        i.normal = normalize(i.normal);
     #endif
-
-    i.normal = normalize(tangentSpaceNormal.x * i.tangent +                                                     // 切线方向偏移x
-                         tangentSpaceNormal.y * binormal +                                                      // 副法线方向偏移y
-                         tangentSpaceNormal.z * i.normal);                                                      // 法线方向偏移z
 }
 
 // 雾效
@@ -326,7 +335,8 @@ float2 ParallaxRaymarching(float2 uv, float2 viewDir){
 
 // 视差贴图
 void ApplyParallax(inout Interpolators i){
-    #if defined(_PARALLAX_MAP)
+    // 视差贴图需要用到uv，如果没有有效uv则视差贴图不生效
+    #if defined(_PARALLAX_MAP) && !defined(NO_DEFAULT_UV)
         i.tangentViewDir = normalize(i.tangentViewDir);
         // 是否不限制偏移值（有需要限制的时候自行定义该宏）
         #if !defined(_PARALLAX_OFFSET_LIMITING)
@@ -340,9 +350,9 @@ void ApplyParallax(inout Interpolators i){
         #if !defined(PARALLAX_FUNCTION)
             #define PARALLAX_FUNCTION ParallaxOffset
         #endif
-        float2 uvOffset = PARALLAX_FUNCTION(i.uv.xy, i.tangentViewDir.xy);
-        i.uv.xy += uvOffset;
-        i.uv.zw += uvOffset * (_DetailTex_ST.xy / _MainTex_ST.xy);                     // 细节贴图的UV也做一下偏移， 并且ST应该相对于主纹理
+        float2 uvOffset = PARALLAX_FUNCTION(UV_FUNCTION(i).xy, i.tangentViewDir.xy);
+        UV_FUNCTION(i).xy += uvOffset;
+        UV_FUNCTION(i).zw += uvOffset * (_DetailTex_ST.xy / _MainTex_ST.xy);            // 细节贴图的UV也做一下偏移， 并且ST应该相对于主纹理
     #endif
 }
 
@@ -352,17 +362,20 @@ InterpolatorsVertex MyVertexProgram(VertexData v)
 	UNITY_INITIALIZE_OUTPUT(InterpolatorsVertex, o);								// 把结构体里的各个变量初始化为0
 
     UNITY_SETUP_INSTANCE_ID(v);                                                     // 用于配合GPUInstance,从而根据自身的instance id修改unity_ObjectToWorld这个矩阵的值，使得下面的UnityObjectToClipPos转换出正确的世界坐标，否则不同位置的多个对象在同一批次渲染的时候，此时他们传进来的模型空间坐标是一样的，不改变unity_ObjectToWorld矩阵的话，最后得到的世界坐标是在同一个位置（多个对象挤在同一个地方）。
-    UNITY_TRANSFER_INSTANCE_ID(v, o);                                               // 把instance ID从结构体v赋值到结构体。
+    UNITY_TRANSFER_INSTANCE_ID(v, o);                                               // 把instance ID从结构体v赋值到结构体o。
     
-    o.uv.xy = TRANSFORM_TEX(v.uv, _MainTex);                                        // 偏移缩放主纹理uv
-    o.uv.zw = TRANSFORM_TEX(v.uv, _DetailTex);                                      // 偏移缩放细节贴图uv
+    // 检查是否有有效的uv
+    #if !defined(NO_DEFAULT_UV)
+        o.uv.xy = TRANSFORM_TEX(v.uv, _MainTex);                                        // 偏移缩放主纹理uv
+        o.uv.zw = TRANSFORM_TEX(v.uv, _DetailTex);                                      // 偏移缩放细节贴图uv
 
-    // 检查是否启用了顶点偏移
-    #if VERTEX_DISPLACEMENT
-        float displacement = tex2Dlod(_DisplacementMap, float4(o.uv.xy, 0, 0)).g;   // 对视差贴图进行采样，不使用mipmap
-        displacement = (displacement - 0.5) * _DisplacementStrength;                // 0~1转换为-0.5~0.5后再乘以强度
-        v.normal = normalize(v.normal);
-        v.vertex.xyz += v.normal * displacement;
+        // 检查是否启用了顶点偏移
+        #if VERTEX_DISPLACEMENT
+            float displacement = tex2Dlod(_DisplacementMap, float4(o.uv.xy, 0, 0)).g;   // 对视差贴图进行采样，不使用mipmap
+            displacement = (displacement - 0.5) * _DisplacementStrength;                // 0~1转换为-0.5~0.5后再乘以强度
+            v.normal = normalize(v.normal);
+            v.vertex.xyz += v.normal * displacement;
+        #endif
     #endif
 
     o.pos = UnityObjectToClipPos(v.vertex);                                         // 裁剪坐标(名称要写死为pos，配合TRANSFER_SHADOW)
@@ -381,12 +394,15 @@ InterpolatorsVertex MyVertexProgram(VertexData v)
 
     o.normal = UnityObjectToWorldNormal(v.normal);                                  // 法线世界坐标
     
-    // 判断是否在片元函数里计算副法线
-    #if defined(BINORMAL_PER_FRAGMENT) 
-        o.tangent = float4(UnityObjectToWorldDir(v.tangent.xyz), v.tangent.w);      // 切线世界坐标
-    #else
-        o.tangent = UnityObjectToWorldDir(v.tangent.xyz);                           // 切线世界坐标,不用传v.tangent.w了，因为不需要在片元函数里算副法线了
-        o.binormal = CreateBinormal(o.normal, o.tangent, v.tangent.w);              // 计算副法线，tangent切线的w存储的是-1或者1，用来表明正负方向的
+    // 判断是否需要切线空间
+    #if REQUIRES_TANGENT_SPACE
+        // 判断是否在片元函数里计算副法线
+        #if defined(BINORMAL_PER_FRAGMENT) 
+            o.tangent = float4(UnityObjectToWorldDir(v.tangent.xyz), v.tangent.w);      // 切线世界坐标
+        #else
+            o.tangent = UnityObjectToWorldDir(v.tangent.xyz);                           // 切线世界坐标,不用传v.tangent.w了，因为不需要在片元函数里算副法线了
+            o.binormal = CreateBinormal(o.normal, o.tangent, v.tangent.w);              // 计算副法线，tangent切线的w存储的是-1或者1，用来表明正负方向的
+        #endif
     #endif
 
     // 调用unity内置宏，得到shadowCoordinates
@@ -429,21 +445,53 @@ FragmentOutPut MyFragmentProgram(Interpolators i)
     #endif
 
     ApplyParallax(i);                       // 应用视察贴图
+    
+    InitializeFragmentNormal(i);            // 初始化法线
 
-    float alpha = GetAlpha(i);
+    SurfaceData surface;
+    // 判断是否有重写的获取表面属性的方法
+    #if defined(SURFACE_FUNCTION)
+        // 先给个默认值
+        surface.normal = i.normal;
+        surface.albedo = 1;
+        surface.alpha = 1;
+        surface.emission = 0;
+        surface.metallic = 0;
+        surface.occlusion = 1;
+        surface.smoothness = 0.5;
+
+        SurfaceParameters sp;
+        sp.normal = i.normal;
+        sp.position = i.worldPos.xyz;
+        sp.uv = UV_FUNCTION(i);
+
+        // 对surface进行赋值
+        SURFACE_FUNCTION(surface, sp);
+    #else
+        surface.normal = i.normal;
+        surface.albedo = ALBEDO_FUNCTION(i);
+        surface.alpha = GetAlpha(i);
+        surface.emission = GetEmission(i);
+        surface.metallic = GetMetallic(i);
+        surface.occlusion = GetOcclusion(i);
+        surface.smoothness = GetSmoothness(i);
+    #endif
+
+    i.normal = surface.normal; // 因为上面的SURFACE_FUNCTION可能会改变法线，这里把改变后的法线赋回给i.normal, 下面的代码可以继续用i.normal
+
+    float alpha = surface.alpha;
     // 判断是否裁剪掉
     #if defined(_RENDERING_CUTOUT)
         clip(alpha - _Cutoff);
     #endif
 
-    InitializeFragmentNormal(i);
     float3 viewDir = normalize(_WorldSpaceCameraPos - i.worldPos.xyz);                                                      // 视线方向
     float3 _SpecularTint;
 
     // 1 - 反射率
     float oneMinusReflectivity;         
     // 确保漫反射的材质反射率加上高光反射的反射率不超过1，并得出高光反射的反射率
-    float3 albedo = DiffuseAndSpecularFromMetallic(ALBEDO_FUNCTION(i), GetMetallic(i), _SpecularTint, oneMinusReflectivity);      // 金属工作流
+    float3 albedo = DiffuseAndSpecularFromMetallic(surface.albedo, surface.metallic, _SpecularTint, oneMinusReflectivity);      // 金属工作流
     #if defined(_RENDERING_TRANSPARENT)
         albedo *= alpha;
 
@@ -453,12 +501,12 @@ FragmentOutPut MyFragmentProgram(Interpolators i)
         alpha = 1 - oneMinusReflectivity + alpha * oneMinusReflectivity;
     #endif
 
-    float4 color = UNITY_BRDF_PBS(albedo, _SpecularTint,                        // 漫反射颜色，高光反射颜色
-                            oneMinusReflectivity, GetSmoothness(i),             // 1 - 反射率，粗糙度
-                            i.normal, viewDir,                                  // 世界空间下的法线和摄像机方向
-                            CreateLight(i), CreateIndirectLight(i, viewDir));   // 光照数据, 间接光数据
+    float4 color = UNITY_BRDF_PBS(albedo, _SpecularTint,                                    // 漫反射颜色，高光反射颜色
+                            oneMinusReflectivity, surface.smoothness,                       // 1 - 反射率，平滑度
+                            i.normal, viewDir,                                              // 世界空间下的法线和摄像机方向
+                            CreateLight(i), CreateIndirectLight(i, viewDir, surface));      // 光照数据, 间接光数据, 表面数据
     // 把自发光叠加上去
-    color.rgb += GetEmission(i); 
+    color.rgb += surface.emission; 
     #if defined(_RENDERING_FADE) || defined(_RENDERING_TRANSPARENT)
         color.a = alpha;
     #endif
@@ -473,11 +521,11 @@ FragmentOutPut MyFragmentProgram(Interpolators i)
             color.rgb = exp2(-color.rgb);       
         #endif
 
-        output.gBuffer0.rgb = albedo;           // 漫反射
-        output.gBuffer0.a = GetOcclusion(i);    // 自阴影
-        output.gBuffer1.rgb = _SpecularTint;    // 高光颜色
-        output.gBuffer1.a = GetSmoothness(i);   // 粗糙度
-        output.gBuffer2 = float4(i.normal * 0.5 + 0.5, 1); // 法线世界坐标(把-1~1的取值范围转化为0~1), rgb分别用了10位，而a通道是2位，并且a通道没有使用
+        output.gBuffer0.rgb = albedo;                       // 漫反射
+        output.gBuffer0.a = surface.occlusion;              // 自阴影
+        output.gBuffer1.rgb = _SpecularTint;                // 高光颜色
+        output.gBuffer1.a = surface.smoothness;             // 粗糙度
+        output.gBuffer2 = float4(i.normal * 0.5 + 0.5, 1);  // 法线世界坐标(把-1~1的取值范围转化为0~1), rgb分别用了10位，而a通道是2位，并且a通道没有使用
         output.gBuffer3 = color;
 
 		// 判断是否启用了阴影遮罩
@@ -498,36 +546,4 @@ FragmentOutPut MyFragmentProgram(Interpolators i)
     return output;
 }
 
-// 没用到
-float4 MyDirectionalFragmentProgram(Interpolators i) : SV_Target
-{
-    i.normal = normalize(i.normal);
-    float3 lightDir = _WorldSpaceLightPos0.xyz;                                                         // 光照方向， 从当前片元指向光源
-    float3 lightColor = _LightColor0.rgb;
-    float3 viewDir = normalize(_WorldSpaceCameraPos - i.worldPos.xyz);                                  // 摄像机方向
-    float3 _SpecularTint;
-
-    // 漫反射
-    float3 albedo = tex2D(_MainTex, i.uv).rgb * UNITY_ACCESS_INSTANCED_PROP(_Color_arr, _Color).rgb;    // 漫反射固有色
-    float oneMinusReflectivity;
-    // 确保漫反射的材质反射率加上高光反射的反射率不超过1，并得出高光反射的反射率
-    albedo = DiffuseAndSpecularFromMetallic(albedo, _Metallic, _SpecularTint, oneMinusReflectivity);    // 金属工作流
-
-
-    // 光照数据结构体
-    UnityLight light;
-    light.color = lightColor;                           // 光照颜色
-    light.dir = lightDir;                               // 光照方向
-    light.ndotl = DotClamped(i.normal, lightDir);       // 漫反射强度    
-
-    // 间接光数据结构体
-    UnityIndirect indirectLight;
-    indirectLight.diffuse = 0;
-    indirectLight.specular = 0;
-
-    return  UNITY_BRDF_PBS(albedo, _SpecularTint,                   // 漫反射颜色，高光反射颜色
-                            oneMinusReflectivity, _Smoothness,      // 1 - 反射率，粗糙度
-                            i.normal, viewDir,                      // 世界空间下的法线和摄像机方向
-                            light, indirectLight);                  // 光照数据, 间接光数据
-}
 #endif

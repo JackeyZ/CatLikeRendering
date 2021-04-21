@@ -94,19 +94,12 @@ struct RenderingSettings {
     };
 }
 
-public class MutiPBSShaderGUI : ShaderGUI
+public class MutiPBSShaderGUI : BaseShaderGUi
 {
-    protected static GUIContent staticLable = new GUIContent();
-    protected Material target;
-    protected MaterialEditor editor;
-    protected MaterialProperty[] properties;
     protected bool shouldShowAlphaCutoff;
-    public override void OnGUI(MaterialEditor materialEditor, MaterialProperty[] properties)
+
+    protected override void ThisOnGUI(MaterialEditor materialEditor, MaterialProperty[] properties)
     {
-        //base.OnGUI(materialEditor, properties);
-        this.target = materialEditor.target as Material;
-        this.editor = materialEditor;
-        this.properties = properties;
         DoRenderingMode();
         DoMain();
         DoSecondary();
@@ -364,83 +357,5 @@ public class MutiPBSShaderGUI : ShaderGUI
     {
         GUILayout.Label("Advanced Options", EditorStyles.boldLabel);
         editor.EnableInstancingField();                                                    // 是否启用GPU实例化(要在shader里用了multi_compile_instancing才会显示出来，实际上对应的是INSTANCING_ON关键字)
-    }
-
-    /// <summary>
-    /// 查找并获得材质球属性
-    /// </summary>
-    /// <param name="name">属性名</param>
-    /// <returns></returns>
-    protected MaterialProperty FindProperty(string name)
-    {
-        return FindProperty(name, this.properties);
-    }
-
-    /// <summary>
-    /// 记录状态快照，支持undo
-    /// </summary>
-    /// <param name="label"></param>
-    protected void RecordAction(string label)
-    {
-        this.editor.RegisterPropertyChangeUndo(label);
-    }
-
-    /// <summary>
-    /// 设置关键字是否激活
-    /// </summary>
-    /// <param name="keyword"></param>
-    /// <param name="state"></param>
-    protected void SetKeyword(string keyword, bool state)
-    {
-        if (state)
-        {
-            foreach (Material target in editor.targets)
-            {
-                target.EnableKeyword(keyword);
-            }
-        }
-        else
-        {
-            foreach (Material target in editor.targets)
-            {
-                target.DisableKeyword(keyword);
-            }
-        }
-    }
-
-    /// <summary>
-    /// 获得某个关键字是否激活
-    /// </summary>
-    /// <param name="keyword"></param>
-    /// <returns></returns>
-    protected bool IsKeywordEnabled(string keyword)
-    {
-        return this.target.IsKeywordEnabled(keyword);
-    }
-
-    /// <summary>
-    /// 获得一个文字标签
-    /// </summary>
-    /// <param name="text"></param>
-    /// <param name="tooltip">鼠标悬停提示</param>
-    /// <returns></returns>
-    protected static GUIContent MakeLabel(string text, string tooltip = null)
-    {
-        staticLable.text = text;
-        staticLable.tooltip = tooltip;
-        return staticLable;
-    }
-
-    /// <summary>
-    /// 获得一个GUI容器
-    /// </summary>
-    /// <param name="property"></param>
-    /// <param name="tooltip">鼠标悬停提示</param>
-    /// <returns></returns>
-    protected static GUIContent MakeLabel(MaterialProperty property, string tooltip = null)
-    {
-        staticLable.text = property.displayName;
-        staticLable.tooltip = tooltip;
-        return staticLable;
     }
 }

@@ -26,7 +26,8 @@ float3 GetAlbedoWithWireframe(Interpolators i)
 	float minBary = min(barys.x, min(barys.y, barys.z));			// 找到最小的分量，该分量代表自身片元到三角面三条边的最短距离
 	return lerp(_WireframeColor, albedo, minBary);
 }
-#define ALBEDO_FUNCTION GetAlbedoWithWireframe
+// 重写获取反射率的方法（把custom lighting input.cginc里定义的覆盖掉）
+#define ALBEDO_FUNCTION GetAlbedoWithWireframe	
 
 #include "CustomLighting.cginc"
 

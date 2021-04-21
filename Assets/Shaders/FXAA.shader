@@ -1,4 +1,4 @@
-﻿Shader "Hidden/FXAA1" {
+﻿Shader "Hidden/FXAA" {
 	Properties {
 		_MainTex ("Texture", 2D) = "white" {}
 	}
