@@ -36,7 +36,7 @@ UnityLight CreateLight(Interpolators i){
 
         UNITY_LIGHT_ATTENUATION(attenuation, i, i.worldPos.xyz);        // 调用unity内置的衰减方法，对阴影贴图的采样也在这里面，第二个参数就是用来算阴影的
 		attenuation = FadeShadows(i, attenuation);                      // 按需进行阴影衰减计算和阴影遮罩采样
-		attenuation *= GetOcclusion(i);
+		//attenuation *= GetOcclusion(i);
         light.color = _LightColor0.rgb * attenuation;                   // 光照颜色
     #endif
 
@@ -45,6 +45,7 @@ UnityLight CreateLight(Interpolators i){
 
 // 处理顶点光源(非重要光)
 void ComputeVertexLightColor(inout InterpolatorsVertex i){
+    // 判断是否需要处理顶点光，仅用于base pass（base pass下用了#pragma multi_compile_fwdbase即会激活该关键字）
     #if defined(VERTEXLIGHT_ON)
         // 最多支持四个顶点光源
         i.vertexLightColor = Shade4PointLights(
@@ -92,7 +93,7 @@ void ApplySubtractiveLighting(Interpolators i, inout UnityIndirect indirectLight
 
         float ndotl = saturate(dot(i.normal, _WorldSpaceLightPos0.xyz));    // 平行光情况下_WorldSpaceLightPos0表示光照方向，这里用lambert光照模型求得漫反射强度（0~1）
         // attenuation如果是1表示光照没有衰减（没有动态阴影)
-        float3 shadowedLightEstimate = ndotl * (1 - attenuation) * _LightColor0.rgb;        // 这里计算得到光照衰减了多少
+        float3 shadowedLightEstimate = ndotl * (1 - attenuation) * _LightColor0.rgb;        // 这里计算得到光照衰减了多少,ForwardBase: _LightColor0是第一个直射光光照颜色, ForwardAdd: _LightColor0是第一个主要光的颜色
         float3 subtractedLight = indirectLight.diffuse - shadowedLightEstimate;             // 用静态光照贴图中的值减去衰减了的光照得到衰减后的光照（所谓的削减模式）
         subtractedLight = max(subtractedLight, unity_ShadowColor.rgb);                      // 避免阴影过于黑暗，设一个下限（unity_ShadowColor对应设置Lighting->Mixed Lighting->Realtime Shadow Color）
         subtractedLight = lerp(subtractedLight, indirectLight.diffuse, _LightShadowData.x); //  _LightShadowData.x是(1-阴影强度)对应灯光组件里面的strength,当阴影强度是0的时候就取indirectLight.diffuse（lightmap里的值）
@@ -118,6 +119,8 @@ UnityIndirect CreateIndirectLight(Interpolators i, float3 viewDir, SurfaceData s
         #if defined(LIGHTMAP_ON)
             indirectLight.diffuse = DecodeLightmap( UNITY_SAMPLE_TEX2D(unity_Lightmap, i.lightmapUV) );                 // 采样光照贴图的光照，并根据不同格式进行解码
             // 是否启用静态光照方向贴图（对应面板Lighting - Lightmapping Setting - Directional Mode设置）
+            // 静态光照方向贴图包含烘培光来自的方向
+            // 启用之后能够让法线贴图的效果更好，不然会由于光照贴图分辨率太低，造成法线的凹凸效果不明显
             #if defined(DIRLIGHTMAP_COMBINED)
                 float4 lightmapDirection = UNITY_SAMPLE_TEX2D_SAMPLER(unity_LightmapInd, unity_Lightmap, i.lightmapUV); // 采样得到光照方向, 用UNITY_SAMPLE_TEX2D_SAMPLER可以复用前面对光照贴图采样的时候用的采样器
                 indirectLight.diffuse = DecodeDirectionalLightmap(indirectLight.diffuse, lightmapDirection, i.normal);  // 对光照方向进行解码（半兰伯特），并叠加到diffuse上
@@ -364,7 +367,7 @@ InterpolatorsVertex MyVertexProgram(VertexData v)
     UNITY_SETUP_INSTANCE_ID(v);                                                     // 用于配合GPUInstance,从而根据自身的instance id修改unity_ObjectToWorld这个矩阵的值，使得下面的UnityObjectToClipPos转换出正确的世界坐标，否则不同位置的多个对象在同一批次渲染的时候，此时他们传进来的模型空间坐标是一样的，不改变unity_ObjectToWorld矩阵的话，最后得到的世界坐标是在同一个位置（多个对象挤在同一个地方）。
     UNITY_TRANSFER_INSTANCE_ID(v, o);                                               // 把instance ID从结构体v赋值到结构体o。
     
-    // 检查是否有有效的uv
+    // 检查默认的uv是否是有效uv
     #if !defined(NO_DEFAULT_UV)
         o.uv.xy = TRANSFORM_TEX(v.uv, _MainTex);                                        // 偏移缩放主纹理uv
         o.uv.zw = TRANSFORM_TEX(v.uv, _DetailTex);                                      // 偏移缩放细节贴图uv
@@ -415,7 +418,7 @@ InterpolatorsVertex MyVertexProgram(VertexData v)
     // 处理四个非重要光
     ComputeVertexLightColor(o);
 
-    // 判断是否启用了视差贴图
+    // 判断是否启用了视差贴图(若启用了顶点偏移，则不会启用视差贴图)
     #if defined(_PARALLAX_MAP)
         // 判断我们是否需要支持动态合批
         #if defined(PARALLAX_SUPPORT_SCALED_DYNAMIC_BATCHING)
@@ -441,10 +444,11 @@ FragmentOutPut MyFragmentProgram(Interpolators i)
     UNITY_SETUP_INSTANCE_ID(i); 
     // 判断是否启用了LOD淡入淡出
     #if defined(LOD_FADE_CROSSFADE)
+        // 会clip掉从抖动贴图采样到的数值低于0.5以下的片元
         UnityApplyDitherCrossFade(i.vpos);  // 这里的i.vpos和i.pos一样都是屏幕空间坐标(x ∈ [0, width]， y ∈ [0, height]）,但i.pos做了一个0.5像素的偏移，以选中像素的中心
     #endif
 
-    ApplyParallax(i);                       // 应用视察贴图
+    ApplyParallax(i);                       // 应用视差贴图
     
     InitializeFragmentNormal(i);            // 初始化法线
 
@@ -480,22 +484,27 @@ FragmentOutPut MyFragmentProgram(Interpolators i)
     i.normal = surface.normal; // 因为上面的SURFACE_FUNCTION可能会改变法线，这里把改变后的法线赋回给i.normal, 下面的代码可以继续用i.normal
 
     float alpha = surface.alpha;
-    // 判断是否裁剪掉
+    // 判断是否是透明度cutout模式
     #if defined(_RENDERING_CUTOUT)
+        // 裁剪掉不符合阈值的片元
         clip(alpha - _Cutoff);
     #endif
 
-    float3 viewDir = normalize(_WorldSpaceCameraPos - i.worldPos.xyz);                                                      // 视线方向
+    float3 viewDir = normalize(_WorldSpaceCameraPos - i.worldPos.xyz);                                                          // 视线方向
     float3 _SpecularTint;
 
     // 1 - 反射率
     float oneMinusReflectivity;         
     // 确保漫反射的材质反射率加上高光反射的反射率不超过1，并得出高光反射的反射率
     float3 albedo = DiffuseAndSpecularFromMetallic(surface.albedo, surface.metallic, _SpecularTint, oneMinusReflectivity);      // 金属工作流
+
+    // 判断是否是半透明（仅调整漫反射的模式）
     #if defined(_RENDERING_TRANSPARENT)
+        // 在这里提前用透明度处理漫反射，而在混合（Blend）的时候采用One OneMinusSrcAlpha的模式，来避免处理高光
         albedo *= alpha;
 
-        // 反射的光越多，则越不透明。当没有反射率是0的时候透明度不变，当反射率是1的时候透明度也是1
+        // 能量守恒问题，一道光照射到物体表面，反射出来的光越多，则通过它的光越少，越不透明。
+        // 即当反射率是0（没有反射）的时候透明度不变，当反射率是1（完全反射）的时候透明度是1（完全不透明）
         // 设反射率是r，即最终透明度a = a + (1 - a) * r = a + r - ra 而oneMinusReflectivity = 1 - r
         // 所以有1 - oneMinusReflectivity + alpha * oneMinusReflectivity = 1 - (1-r) + a * (1 - r) = a + r - ra = a + (1 - a) * r
         alpha = 1 - oneMinusReflectivity + alpha * oneMinusReflectivity;
@@ -507,6 +516,7 @@ FragmentOutPut MyFragmentProgram(Interpolators i)
                             CreateLight(i), CreateIndirectLight(i, viewDir, surface));      // 光照数据, 间接光数据, 表面数据
     // 把自发光叠加上去
     color.rgb += surface.emission; 
+
     #if defined(_RENDERING_FADE) || defined(_RENDERING_TRANSPARENT)
         color.a = alpha;
     #endif
@@ -543,6 +553,7 @@ FragmentOutPut MyFragmentProgram(Interpolators i)
     #else
         output.color = ApplyFog(color, i);
     #endif
+    
     return output;
 }
 

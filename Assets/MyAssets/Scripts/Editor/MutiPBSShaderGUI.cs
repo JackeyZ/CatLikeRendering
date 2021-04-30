@@ -46,7 +46,7 @@ enum RenderingMode
     Fade,
 
     /// <summary>
-    /// 半透明，只对漫反射进行半透明处理
+    /// 半透明，只对漫反射进行半透明处理。 如玻璃，则不需要对高光进行半透明处理
     /// </summary>
     Transparent
 }
@@ -71,7 +71,7 @@ struct RenderingSettings {
             zWrite = true,
         },
         new RenderingSettings(){
-            queue = RenderQueue.AlphaTest,      // 全透明cutout
+            queue = RenderQueue.AlphaTest,      // 全透明cutout,会直接裁剪掉透明度未达到阈值的片元
             renderType = "TransparentCutout",
             srcBlend = BlendMode.One,
             dstBlend = BlendMode.Zero,
@@ -85,9 +85,9 @@ struct RenderingSettings {
             zWrite = false,
         },
         new RenderingSettings(){
-            queue = RenderQueue.Transparent,    // 半透明，只对漫反射进行半透明处理
+            queue = RenderQueue.Transparent,    // 半透明，只对漫反射进行半透明处理。如玻璃，则不需要对高光进行半透明处理
             renderType = "Transparent",
-            srcBlend = BlendMode.One,
+            srcBlend = BlendMode.One,           // 已在片元着色器提前用透明度对漫反射进行处理，这里用One，来避免对高光进行透明度处理
             dstBlend = BlendMode.OneMinusSrcAlpha,
             zWrite = false,
         },
@@ -101,6 +101,7 @@ public class MutiPBSShaderGUI : BaseShaderGUi
     protected override void ThisOnGUI(MaterialEditor materialEditor, MaterialProperty[] properties)
     {
         DoRenderingMode();
+        DoCullMode();
         DoMain();
         DoSecondary();
         DoAdvanced();
@@ -194,6 +195,17 @@ public class MutiPBSShaderGUI : BaseShaderGUi
         if (!smitransparentShadows)
         {
             shouldShowAlphaCutoff = true;
+        }
+    }
+
+    // 剔除模式的下拉框
+    void DoCullMode() {
+        CullMode cull_mode = (CullMode)(int)target.GetFloat("_Cull");
+        EditorGUI.BeginChangeCheck();
+        cull_mode = (CullMode)EditorGUILayout.EnumPopup(MakeLabel("Cull Mode"), cull_mode);
+        if (EditorGUI.EndChangeCheck())
+        {
+            this.target.SetInt("_Cull", (int)cull_mode);
         }
     }
 

@@ -32,8 +32,9 @@
         [HideInInspector] _SrcBlend("_SrcBlend", Float) = 1                     // 新渲染片元颜色权重
         [HideInInspector] _DstBlend("_DstBlend", Float) = 0                     // color buffer里面的颜色权重
         [HideInInspector] _ZWrite("_ZWrite", Float) = 1                         // 是否进行深度写入
+        [HideInInspector] _Cull("_Cull", Float) = 2                             // 剔除背面或正面（0：Off, 1：Front, 2:Back）,默认剔除背面
     }
-    
+
     CustomEditor "MutiPBSShaderGUI"
 
     // 定义宏，应用到所有的pass
@@ -66,12 +67,15 @@
         Pass
         {
             Tags {
-                "LightMode" = "ForwardBase"
+                "LightMode" = "ForwardBase" // 一个逐像素的平行光，所有逐顶点和SH光源，环境光、自发光
             }
 
             // 两个参数分别是：新渲染的片元颜色混合时的权重、 color buffer的颜色混合时的权重
             Blend [_SrcBlend] [_DstBlend]
             ZWrite [_ZWrite]
+
+            // 剔除
+            Cull [_Cull] 
 
             CGPROGRAM
             // 用3.0，确保PBS达到最好的效果
@@ -93,7 +97,7 @@
             // 支持lod fade 的GPU实例化(新版本不用了，默认开启)
             //#pragma instancing_options lodfade
 
-            // 不透明渲染、全透明度裁剪、淡入半透明度渲染、 半透明渲染
+            // 不透明渲染、全透明度裁剪、淡入半透明度渲染、 半透明渲染（仅漫反射半透，高光等不处理，如玻璃：漫反射是完全透明，但还是可以看到高光）
             #pragma shader_feature _ _RENDERING_CUTOUT _RENDERING_FADE _RENDERING_TRANSPARENT
             // 是否使用金属度贴图
             #pragma shader_feature _METALLIC_MAP
@@ -128,8 +132,9 @@
         Pass
         {
             Tags {
-                "LightMode" = "ForwardAdd"
+                "LightMode" = "ForwardAdd"  // 其他影响当前物体的逐像素光源（每个光源执行一次pass）
             }
+            // 因为是附加通道，所以缓冲区的混合权重用One，然后把本pass计算出的颜色叠加上去。
             Blend [_SrcBlend] One
             ZWrite Off      // ForwardBase路径里已经写入了，这里没必要再写入
 

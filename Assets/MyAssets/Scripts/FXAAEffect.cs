@@ -51,7 +51,7 @@ public class FXAAEffect : MonoBehaviour
     /// <summary>
     /// 亮度获取方式
     /// </summary>
-    public LuminanceMode luminanceSource;
+    public LuminanceMode luminanceSource = LuminanceMode.Calculate;
 
     // 计算亮度的pass
     const int luminancePass = 0;
