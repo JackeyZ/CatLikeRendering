@@ -226,7 +226,8 @@ struct FragmentOutPut{
 UNITY_INSTANCING_BUFFER_START(InstanceProperties)   
     // 相当于float4 _Color，但不同平台有些许不同，这里用宏处理
     UNITY_DEFINE_INSTANCED_PROP(float4, _Color)
-    // 定义颜色buffer数组，储存外部传进来的属性块，令颜色属性拥有缓冲区
+    // 定义颜色buffer数组，储存外部传进来的属性块(C#里用render.SetPropertyBlock设置颜色)，令颜色属性拥有缓冲区
+    // 这里相当于给InstanceProperties定义一个别名，叫_Color_arr
     #define _Color_arr InstanceProperties
 UNITY_INSTANCING_BUFFER_END(InstanceProperties)
 
@@ -315,9 +316,9 @@ float GetDetailMask(Interpolators i){
 
 // 获得漫反射固有色
 float3 GetAlbedo(Interpolators i){
-    float3 albedo = tex2D(_MainTex, UV_FUNCTION(i).xy).rgb * UNITY_ACCESS_INSTANCED_PROP(_Color_arr, _Color).rgb;
+    float3 albedo = tex2D(_MainTex, UV_FUNCTION(i).xy).rgb * UNITY_ACCESS_INSTANCED_PROP(_Color_arr, _Color).rgb;       //UNITY_ACCESS_INSTANCED_PROP是在启用GPUInstance时，利用自己的 实例id 来提取属性块里属性的方法，这里提取_Color_arr属性块里的名叫"_Color"的属性
     #if defined(_DETAIL_ALBEDO_MAP)
-        float3 details = tex2D(_DetailTex, UV_FUNCTION(i).zw) * unity_ColorSpaceDouble;
+        float3 details = tex2D(_DetailTex, UV_FUNCTION(i).zw) * unity_ColorSpaceDouble;        // unity_ColorSpaceDouble：Gamma空间下是2，Linear空间下是4.594
         albedo = lerp(albedo, albedo * details, GetDetailMask(i));
     #endif
     return albedo;
@@ -326,7 +327,7 @@ float3 GetAlbedo(Interpolators i){
 // 获得透明度
 float GetAlpha(Interpolators i){
     float alpha = UNITY_ACCESS_INSTANCED_PROP(_Color_arr, _Color).a;
-    // 如果粗糙度来源不是主纹理的a通道
+    // 如果粗糙度来源不是主纹理的a通道，则表示主纹理的a通道也要计算到最后的透明度里
     #if !defined(_SMOOTHNESS_ALBEDO)
         alpha = UNITY_ACCESS_INSTANCED_PROP(_Color_arr, _Color).a * tex2D(_MainTex, UV_FUNCTION(i).xy).a;
     #endif

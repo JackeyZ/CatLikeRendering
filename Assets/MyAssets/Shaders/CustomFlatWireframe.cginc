@@ -31,6 +31,7 @@ float3 GetAlbedoWithWireframe(Interpolators i)
 
 #include "CustomLighting.cginc"
 
+// 几何着色器单个顶点的输出结构，同时也是片元着色器的输入结构
 struct InterpolatorsGeometry{
 	InterpolatorsVertex data;
 	CUSTOM_GEOMETRY_INTERPOLATORS		
@@ -44,7 +45,9 @@ void MyGeometryProgram(triangle InterpolatorsVertex i[3], inout TriangleStream<I
 	float3 p1 = i[1].worldPos.xyz;
 	float3 p2 = i[2].worldPos.xyz;
 
+	// 计算三角面的法线
 	float3 triangleNormal = normalize(cross((p1 - p0), (p2 - p0)));
+	// 修改顶点的法线，让三角面三个顶点的法线相同
 	i[0].normal = triangleNormal;
 	i[1].normal = triangleNormal;
 	i[2].normal = triangleNormal;

@@ -80,13 +80,13 @@ Material:
     - _Mode: 0
     - _OcclusionStrength: 1
     - _Parallax: 0.02
-    - _ParallaxStrength: 0.909
+    - _ParallaxStrength: 0.894
     - _Smoothness: 0.477
     - _SmoothnessTextureChannel: 0
     - _SpecularHighlights: 1
     - _SrcBlend: 1
-    - _TessellationEdgeLength: 5
-    - _TessellationUniform: 8.6
+    - _TessellationEdgeLength: 14.1
+    - _TessellationUniform: 8.2
     - _UVSec: 0
     - _WireframeSmoothing: 0.5
     - _WireframeThickness: 0.5
